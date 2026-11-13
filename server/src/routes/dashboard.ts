@@ -24,10 +24,10 @@ router.get('/stats', async (req: Request, res: Response) => {
 
     const [attStats] = await pool.query<any[]>(
       `SELECT 
-        COUNT(CASE WHEN status IN ('present','late') THEN 1 END) as present,
+        COUNT(CASE WHEN status IN ('present','late','half-day','half_day') THEN 1 END) as present,
         COUNT(CASE WHEN status='absent' THEN 1 END) as absent,
         COUNT(CASE WHEN status='late' THEN 1 END) as late
-       FROM attendance_records WHERE date = ? AND is_archived = 0`,
+       FROM attendance_records WHERE (date = CURDATE() OR date = ?) AND is_archived = 0`,
       [today]
     );
 

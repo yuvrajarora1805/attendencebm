@@ -85,6 +85,23 @@ router.post('/punch', async (req: Request, res: Response) => {
           [emp.id, today, now, isLate, lateMinutes, isLate ? 'late' : 'present', req.user!.id]);
       }
 
+      // Record in audit log so it shows in Recent System Activity on Dashboard
+      try {
+        await auditLog(
+          req.user?.id || null,
+          req.user?.username || 'terminal',
+          'punch_in',
+          'attendance',
+          emp.id,
+          `${emp.name} (${emp.emp_code})`,
+          { action: 'in', time: now, is_late: isLate, late_minutes: lateMinutes },
+          `Punch In: ${emp.name} (${emp.emp_code})${isLate ? ' - Late ' + lateMinutes + 'm' : ''}`,
+          req
+        );
+      } catch (logErr) {
+        console.error('Audit log error on punch in:', logErr);
+      }
+
       return res.json({
         success: true,
         action: 'in',
@@ -115,6 +132,23 @@ router.post('/punch', async (req: Request, res: Response) => {
       await pool.query('UPDATE attendance_records SET punch_out = ?, overtime_hours = ?, punched_by = ? WHERE id = ?',
         [now, overtimeHours, req.user!.id, existing.id]);
 
+      // Record in audit log so it shows in Recent System Activity on Dashboard
+      try {
+        await auditLog(
+          req.user?.id || null,
+          req.user?.username || 'terminal',
+          'punch_out',
+          'attendance',
+          emp.id,
+          `${emp.name} (${emp.emp_code})`,
+          { action: 'out', time: now, overtime_hours: overtimeHours },
+          `Punch Out: ${emp.name} (${emp.emp_code})${overtimeHours > 0 ? ' - OT ' + overtimeHours + 'h' : ''}`,
+          req
+        );
+      } catch (logErr) {
+        console.error('Audit log error on punch out:', logErr);
+      }
+
       return res.json({
         success: true,
         action: 'out',
@@ -139,7 +173,7 @@ router.get('/today', async (req: Request, res: Response) => {
        FROM attendance_records ar
        JOIN employees e ON ar.emp_id = e.id 
        LEFT JOIN departments d ON (e.department_id = d.id OR e.dept_id = d.id)
-       WHERE ar.date = ? AND ar.is_archived = 0 
+       WHERE (ar.date = CURDATE() OR ar.date = ?) AND ar.is_archived = 0 
        ORDER BY ar.punch_in DESC, ar.id DESC`, [today]
     );
 
