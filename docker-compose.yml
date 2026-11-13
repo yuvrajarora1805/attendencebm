@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # ── MySQL 8.0 Database ─────────────────────────────────────────
+  attendpro-db:
+    image: mysql:8.0
+    container_name: attendpro-db-1
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: attendpro_root_password_2026
+      MYSQL_DATABASE: attendance_db
+      MYSQL_USER: attendance_user
+      MYSQL_PASSWORD: attendpro_user_password_2026
+    ports:
+      # Next available MySQL port (3306-3310 in use)
+      - "3311:3306"
+    volumes:
+      - attendpro_mysql_data:/var/lib/mysql
+      # Auto-initializes tables and default admin on first startup
+      - ./server/src/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pattendpro_root_password_2026"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - attendpro-net
+
+  # ── Express API Backend ────────────────────────────────────────
+  attendpro-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: attendpro-server-1
+    restart: unless-stopped
+    depends_on:
+      attendpro-db:
+        condition: service_healthy
+    environment:
+      PORT: 5050
+      DB_HOST: attendpro-db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: attendpro_root_password_2026
+      DB_NAME: attendance_db
+      JWT_SECRET: super_secret_jwt_key_attendpro_2026
+      JWT_GUARD_SECRET: guard_secret_jwt_key_attendpro_2026
+      JWT_EXPIRES_IN: 8h
+      JWT_GUARD_EXPIRES_IN: 12h
+      BACKUP_DIR: /app/backups
+      FRONTEND_URL: http://localhost:3015
+      NODE_ENV: production
+    ports:
+      # Next available web/app API port (3000-3014 in use)
+      - "3016:5050"
+    volumes:
+      - attendpro_backups:/app/backups
+    networks:
+      - attendpro-net
+
+  # ── React + Vite + Nginx Web Frontend ──────────────────────────
+  attendpro-web:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: attendpro-web-1
+    restart: unless-stopped
+    depends_on:
+      - attendpro-server
+    ports:
+      # Next available web frontend port (3000-3014 in use)
+      - "3015:80"
+    networks:
+      - attendpro-net
+
+networks:
+  attendpro-net:
+    driver: bridge
+
+volumes:
+  attendpro_mysql_data:
+    driver: local
+  attendpro_backups:
+    driver: local
+

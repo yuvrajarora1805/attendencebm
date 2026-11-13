@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+*/node_modules/
+client/node_modules/
+server/node_modules/
+
+# Production & Build outputs
+dist/
+client/dist/
+server/dist/
+build/
+aplication/build/
+aplication/.dart_tool/
+aplication/.flutter-plugins*
+aplication/.pub-cache/
+aplication/.pub/
+aplication/linux/flutter/ephemeral/
+aplication/windows/flutter/ephemeral/
+
+# Temporary and local files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+*.swp
+*.swo
+
+# Temporary database backups & extraction caches
+server/tmp_mdb/
+server/backups/
+backups/
+
+# Local sensitive env (keep default template .env and .env.example)
+.env.local
+.env.*.local

@@ -1,0 +1,18 @@
+{
+  "name": "attendance-management-system",
+  "version": "1.0.0",
+  "description": "Complete Salary, Attendance & Data Control Software",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\" \"npm run dev:guard:service\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "dev:guard": "cd client && npm run dev:guard",
+    "dev:guard:service": "cd server && npm run dev:guard",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "build": "cd client && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
