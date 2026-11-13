@@ -34,3 +34,4 @@ backups/
 # Local sensitive env (keep default template .env and .env.example)
 .env.local
 .env.*.local
+

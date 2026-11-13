@@ -31,9 +31,9 @@ app.use(cors({
 }));
 
 // Rate limiting
-const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 500 });
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: 'Too many login attempts' });
-const punchLimiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 30, message: 'Too many punch requests' });
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 500, validate: { default: false } });
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: 'Too many login attempts', validate: { default: false } });
+const punchLimiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 30, message: 'Too many punch requests', validate: { default: false } });
 
 app.use(generalLimiter);
 app.use(express.json({ limit: '10mb' }));

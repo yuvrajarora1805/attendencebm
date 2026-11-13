@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS employees (
   salary_approved TINYINT(1) DEFAULT 1,
   salary_approved_by INT NULL,
   monthly_advance_deduction DECIMAL(10,2) DEFAULT 0.00,
+  initial_basic_salary DECIMAL(12,2) NULL,
+  last_increment_date DATE NULL,
   status ENUM('active','inactive','resigned') DEFAULT 'active',
   photo_url VARCHAR(255) NULL,
   created_by INT NULL,

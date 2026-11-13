@@ -16,14 +16,24 @@ const pool = mysql.createPool({
   timezone: '+00:00',
 });
 
-export async function testConnection(): Promise<void> {
-  try {
-    const conn = await pool.getConnection();
-    console.log('✅ MySQL connected successfully');
-    conn.release();
-  } catch (error) {
-    console.error('❌ MySQL connection failed:', error);
-    throw error;
+export async function testConnection(maxRetries = 15, delayMs = 2000): Promise<void> {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    attempt++;
+    try {
+      console.log(`📡 Connecting to MySQL database at ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || 3306} (attempt ${attempt}/${maxRetries})...`);
+      const conn = await pool.getConnection();
+      console.log('✅ MySQL connected successfully');
+      conn.release();
+      return;
+    } catch (error: any) {
+      console.warn(`⚠️ MySQL connection attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+      if (attempt >= maxRetries) {
+        console.error('❌ All MySQL connection attempts exhausted:', error);
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
   }
 }
 

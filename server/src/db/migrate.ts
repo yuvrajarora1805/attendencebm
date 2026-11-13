@@ -1,4 +1,5 @@
 import pool from './connection';
+import bcrypt from 'bcryptjs';
 
 export async function runAutoMigrations(): Promise<void> {
   try {
@@ -10,6 +11,8 @@ export async function runAutoMigrations(): Promise<void> {
       { col: 'salary_approved', type: 'TINYINT(1) DEFAULT 1' },
       { col: 'salary_approved_by', type: 'INT NULL' },
       { col: 'monthly_advance_deduction', type: 'DECIMAL(10,2) DEFAULT 0.00' },
+      { col: 'initial_basic_salary', type: 'DECIMAL(12,2) NULL' },
+      { col: 'last_increment_date', type: 'DATE NULL' },
     ];
 
     for (const item of columnsToAdd) {
@@ -37,7 +40,6 @@ export async function runAutoMigrations(): Promise<void> {
 
     // 3. Seed default manager user if not already present
     try {
-      const bcrypt = require('bcryptjs');
       const [mgrRows]: any = await pool.query(`SELECT id FROM users WHERE username = 'manager'`);
       if (!mgrRows || mgrRows.length === 0) {
         const mgrPasswordHash = await bcrypt.hash('manager123', 10);
