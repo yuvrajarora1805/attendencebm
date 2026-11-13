@@ -335,9 +335,7 @@ export const BatchAdvanceModal: React.FC<BatchAdvanceModalProps> = ({
           color: '#1e40af',
           flexShrink: 0
         }}>
-          <div>
-            ⚡ <strong>50% Earned Wage Rule:</strong> Standard advance allowance is automatically computed as <em>(Days Worked this Month &times; Per Day Rate) &divide; 2</em>.
-          </div>
+          <div></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#f59e0b' }}></span>
@@ -351,7 +349,7 @@ export const BatchAdvanceModal: React.FC<BatchAdvanceModalProps> = ({
           {loading ? (
             <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
               <div className="spin" style={{ display: 'inline-block', width: '32px', height: '32px', border: '3px solid #2563eb', borderTopColor: 'transparent', borderRadius: '50%', marginBottom: '12px' }}></div>
-              <div style={{ fontSize: '14px', fontWeight: 600 }}>Calculating live attendance days worked & 50% advance eligibility...</div>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>Calculating live attendance days worked & advance eligibility...</div>
             </div>
           ) : error ? (
             <div style={{ margin: '20px', padding: '16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>

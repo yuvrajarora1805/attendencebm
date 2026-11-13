@@ -110,9 +110,11 @@ export const EmployeeProfilePage: React.FC = () => {
                 <Banknote size={16} /> Issue Salary
               </button>
             )}
-            <button className="btn btn-primary" onClick={() => setAdvanceModalOpen(true)}>
-              <Plus size={16} /> {isManager ? 'Request Advance' : 'Disburse Advance'}
-            </button>
+            {!isManager && (
+              <button className="btn btn-primary" onClick={() => setAdvanceModalOpen(true)}>
+                <Plus size={16} /> Disburse Advance
+              </button>
+            )}
             <button className="btn btn-secondary" onClick={() => navigate('/employees')}>
               <ArrowLeft size={16} /> All Employees
             </button>
@@ -723,7 +725,8 @@ export const EmployeeProfilePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Advance & Loan Ledger History Section */}
+        {/* Advance & Loan Ledger History Section (Protected - Hidden for Managers) */}
+        {!isManager && (
         <div style={{
           background: 'var(--surface-card, #ffffff)',
           border: '1px solid var(--border-color)',
@@ -1119,6 +1122,7 @@ export const EmployeeProfilePage: React.FC = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* Salary Sheet History Section (Protected & Released View) */}
         <div style={{

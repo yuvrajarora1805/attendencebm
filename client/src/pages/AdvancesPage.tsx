@@ -335,13 +335,15 @@ export const AdvancesPage: React.FC = () => {
               >
                 ⚡ Batch Advance Checklist
               </button>
-              <button
-                className="btn btn-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                onClick={() => setModalOpen(true)}
-              >
-                <Plus size={16} /> {isAdmin ? 'Single Advance' : 'Single Request'}
-              </button>
+              {isAdmin && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => setModalOpen(true)}
+                >
+                  <Plus size={16} /> Single Advance
+                </button>
+              )}
             </div>
           ) : undefined
         }
