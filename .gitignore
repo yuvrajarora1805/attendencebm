@@ -31,6 +31,10 @@ server/tmp_mdb/
 server/backups/
 backups/
 
+# Database uncompressed dump
+database/*.sql
+!server/src/db/schema.sql
+
 # Local sensitive env (keep default template .env and .env.example)
 .env.local
 .env.*.local
