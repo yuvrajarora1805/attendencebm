@@ -38,11 +38,10 @@ export async function runAutoMigrations(): Promise<void> {
       console.warn('Note on users role ENUM migration:', err.message);
     }
 
-    // 3. Ensure default system users (karan [super admin], admin, guard, manager) exist with verified valid passwords
+    // 3. Ensure default system users (karan [super admin], guard, manager) exist with verified valid passwords
     try {
       const defaultUsers = [
         { username: 'karan', password: 'arora@karan147', full_name: 'Super Administrator', role: 'admin' },
-        { username: 'admin', password: 'admin123', full_name: 'System Administrator', role: 'admin' },
         { username: 'guard', password: 'admin123', full_name: 'Security Guard', role: 'security_guard' },
         { username: 'manager', password: 'manager123', full_name: 'Floor Shift Manager', role: 'manager' },
       ];

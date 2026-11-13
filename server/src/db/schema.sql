@@ -390,7 +390,6 @@ CREATE TABLE IF NOT EXISTS system_settings (
 -- ============================================================
 INSERT IGNORE INTO users (username, password_hash, full_name, role) VALUES
 ('karan', '$2a$10$ey44U.DSMfpEOznEnY/1E./kS3OlAU/M5E.QvZioImC2iB3S2Foa6', 'Super Administrator', 'admin'),
-('admin', '$2a$10$pWmRhqBvX53LLojHWhhobusxTKSg/SHWiVV4w./Dve3u/lCwNt2DC', 'System Administrator', 'admin'),
 ('guard', '$2a$10$pWmRhqBvX53LLojHWhhobusxTKSg/SHWiVV4w./Dve3u/lCwNt2DC', 'Security Guard', 'security_guard');
 
 -- ============================================================
