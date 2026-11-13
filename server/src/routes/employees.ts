@@ -687,23 +687,39 @@ router.get('/:id/analytics', async (req: Request, res: Response) => {
       };
     }).reverse();
 
-    // Fetch active advance cycles (multi-cycle tracking e.g. 1000/mo and 2500/mo)
-    const [activeCyclesRaw]: any = await pool.query(
-      `SELECT a.id, a.date, a.amount, a.mode, a.remarks, a.monthly_deduction, a.recovered_amount,
-              (a.amount - COALESCE(a.recovered_amount, 0)) as remaining_balance
-       FROM advance_transactions a
-       WHERE a.emp_id = ? AND a.type = 'given' 
-         AND (a.amount - COALESCE(a.recovered_amount, 0)) > 0
-         AND a.remarks NOT LIKE 'SALARY PAID%'
-         AND a.remarks NOT REGEXP '^SALARY [A-Za-z]+ [0-9]{4}'
-       ORDER BY a.date ASC, a.id ASC`,
-      [actualEmpId]
-    );
+    // Net outstanding debt is the true financial ledger balance
+    const netOutstandingDebt = Math.max(0, totalGiven - totalDeducted);
+    const currentAdvanceBalance = netOutstandingDebt;
 
-    const cycleTotalRemaining = activeCyclesRaw.reduce((sum: number, c: any) => sum + Number(c.remaining_balance || 0), 0);
-    const currentAdvanceBalance = cycleTotalRemaining > 0 ? cycleTotalRemaining : Math.max(0, totalGiven - totalDeducted);
+    // Active cycles only exist if there is an unpaid outstanding debt
+    let remainingToAllocate = netOutstandingDebt;
+    const activeCycles: any[] = [];
 
-    const totalActiveMonthlyCut = activeCyclesRaw.reduce((sum: number, c: any) => sum + Number(c.monthly_deduction || 0), 0);
+    if (netOutstandingDebt > 0) {
+      // Find the most recent given advances that make up this outstanding debt
+      const givenAdvances = advanceHistoryRaw
+        .filter((tx: any) => tx.type === 'given')
+        .reverse(); // latest first
+
+      for (const adv of givenAdvances) {
+        if (remainingToAllocate <= 0) break;
+        const advAmt = Number(adv.amount) || 0;
+        const cycleBalance = Math.min(advAmt, remainingToAllocate);
+        activeCycles.push({
+          id: adv.id,
+          date: adv.date,
+          amount: advAmt,
+          mode: adv.mode || 'cash',
+          remarks: adv.remarks,
+          monthly_deduction: adv.monthly_deduction || 0,
+          recovered_amount: advAmt - cycleBalance,
+          remaining_balance: cycleBalance
+        });
+        remainingToAllocate -= cycleBalance;
+      }
+    }
+
+    const totalActiveMonthlyCut = activeCycles.reduce((sum: number, c: any) => sum + Number(c.monthly_deduction || 0), 0);
     const effectiveMonthlyCut = totalActiveMonthlyCut > 0 ? totalActiveMonthlyCut : (Number(emp.monthly_advance_deduction) || 0);
 
     // Advance Requests (Pending, Approved, Rejected) for this employee
@@ -777,7 +793,7 @@ router.get('/:id/analytics', async (req: Request, res: Response) => {
           current_advance_balance: currentAdvanceBalance,
           total_given: totalGiven,
           total_deducted: totalDeducted,
-          active_cycles: activeCyclesRaw,
+          active_cycles: activeCycles,
           total_active_monthly_cut: effectiveMonthlyCut
         } : {
           salary_per_day: Math.round(salaryPerDay),
@@ -790,7 +806,7 @@ router.get('/:id/analytics', async (req: Request, res: Response) => {
           total_given: totalGiven,
           total_deducted: totalDeducted,
           monthly_advance_deduction: effectiveMonthlyCut,
-          active_cycles: activeCyclesRaw,
+          active_cycles: activeCycles,
           total_active_monthly_cut: effectiveMonthlyCut,
           months_to_clear_advance: (effectiveMonthlyCut > 0 && currentAdvanceBalance > 0)
             ? Math.ceil(currentAdvanceBalance / effectiveMonthlyCut)
