@@ -20,11 +20,12 @@ export const AttendancePage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [todayMeta, setTodayMeta] = useState<any>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const { hasRole } = useAuth();
 
-  const fetchAttendance = async () => {
+  const fetchAttendance = async (isBackground = false) => {
     try {
-      setLoading(true);
+      if (!isBackground) setLoading(true);
       if (viewMode === 'today') {
         const res = await api.get('/attendance/today');
         setRecords(res.data?.data || []);
@@ -37,7 +38,7 @@ export const AttendancePage: React.FC = () => {
     } catch (err) {
       console.error('Failed to load attendance', err);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
@@ -45,14 +46,14 @@ export const AttendancePage: React.FC = () => {
     fetchAttendance();
   }, [viewMode, month, year]);
 
-  // Auto refresh every 30 seconds if on Today's check-in view
+  // Optional background live refresh only when enabled by user
   useEffect(() => {
-    if (viewMode !== 'today') return;
+    if (viewMode !== 'today' || !autoRefresh) return;
     const interval = setInterval(() => {
-      fetchAttendance();
+      fetchAttendance(true);
     }, 30000);
     return () => clearInterval(interval);
-  }, [viewMode]);
+  }, [viewMode, autoRefresh]);
 
   const handleSaveCorrection = async () => {
     if (!editingRow) return;
@@ -239,15 +240,27 @@ export const AttendancePage: React.FC = () => {
             </div>
 
             {viewMode === 'today' ? (
-              <button 
-                className="btn btn-secondary" 
-                style={{ height: '34px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}
-                onClick={fetchAttendance}
-                title="Refresh Live Data"
-              >
-                <RefreshCw size={14} className={loading ? 'spin' : ''} />
-                <span>Refresh</span>
-              </button>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button 
+                  type="button"
+                  className={`btn ${autoRefresh ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ height: '34px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px' }}
+                  onClick={() => setAutoRefresh(!autoRefresh)}
+                  title={autoRefresh ? "Auto-refresh is ON - click to pause" : "Auto-refresh is PAUSED - click to enable"}
+                >
+                  <span>{autoRefresh ? '🟢 Auto-Refresh ON' : '⏸️ Auto-Refresh OFF'}</span>
+                </button>
+
+                <button 
+                  className="btn btn-secondary" 
+                  style={{ height: '34px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}
+                  onClick={() => fetchAttendance(false)}
+                  title="Refresh Live Data"
+                >
+                  <RefreshCw size={14} className={loading ? 'spin' : ''} />
+                  <span>Refresh</span>
+                </button>
+              </div>
             ) : (
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <select
@@ -361,7 +374,7 @@ export const AttendancePage: React.FC = () => {
         
         {viewMode === 'today' && (
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'right' }}>
-            Auto-refresh active (every 30s) • Last refreshed at {lastRefreshed.toLocaleTimeString()}
+            {autoRefresh ? '🟢 Auto-refresh active (silent 30s background update)' : '⏸️ Auto-refresh paused (click Refresh to update manually)'} • Last updated at {lastRefreshed.toLocaleTimeString()}
           </div>
         )}
       </div>
