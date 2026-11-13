@@ -167,14 +167,17 @@ router.post('/punch', async (req: Request, res: Response) => {
 // GET /api/attendance/today
 router.get('/today', async (req: Request, res: Response) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const queryDate = (req.query.date as string) || '';
+    const today = queryDate || new Date().toISOString().split('T')[0];
+
     const [rows] = await pool.query<any[]>(
       `SELECT ar.*, e.name, e.name as emp_name, e.emp_code, d.name as department_name, d.name as dept_name 
        FROM attendance_records ar
        JOIN employees e ON ar.emp_id = e.id 
-       LEFT JOIN departments d ON (e.department_id = d.id OR e.dept_id = d.id)
-       WHERE (ar.date = CURDATE() OR ar.date = ?) AND ar.is_archived = 0 
-       ORDER BY ar.punch_in DESC, ar.id DESC`, [today]
+       LEFT JOIN departments d ON e.department_id = d.id
+       WHERE (ar.date = ? OR ar.date = CURDATE() OR DATE(ar.punch_in) = CURDATE() OR DATE(ar.punch_in) = ?) AND ar.is_archived = 0 
+       ORDER BY COALESCE(ar.punch_out, ar.punch_in) DESC, ar.id DESC`,
+      [today, today]
     );
 
     // Also get active employee total to give a quick overview
@@ -191,7 +194,8 @@ router.get('/today', async (req: Request, res: Response) => {
         punched_count: rows.length
       }
     });
-  } catch (err) {
+  } catch (err: any) {
+    console.error('Error fetching today attendance:', err?.message || err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
@@ -204,12 +208,13 @@ router.get('/monthly', async (req: Request, res: Response) => {
     const [rows] = await pool.query<any[]>(
       `SELECT ar.*, e.name as emp_name, e.emp_code, d.name as dept_name, d.name as department_name
        FROM attendance_records ar JOIN employees e ON ar.emp_id = e.id
-       LEFT JOIN departments d ON (e.department_id = d.id OR e.dept_id = d.id)
+       LEFT JOIN departments d ON e.department_id = d.id
        WHERE MONTH(ar.date) = ? AND YEAR(ar.date) = ? AND ar.is_archived = 0
        ORDER BY ar.date DESC, e.emp_code ASC`, [month, year]
     );
     return res.json({ success: true, data: rows });
-  } catch (err) {
+  } catch (err: any) {
+    console.error('Error fetching monthly attendance:', err?.message || err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 });

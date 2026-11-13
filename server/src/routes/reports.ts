@@ -25,7 +25,7 @@ router.get('/salary/excel', authorizeRoles('admin', 'hr', 'payroll_operator', 'p
               s.payment_mode as "Mode", s.payment_status as "Status"
        FROM salary_entries s
        JOIN employees e ON s.emp_id = e.id
-       LEFT JOIN departments d ON e.dept_id = d.id
+       LEFT JOIN departments d ON e.department_id = d.id
        WHERE s.period_id = ? AND e.status = 'active'
        ORDER BY e.emp_code ASC`,
       [period_id]
@@ -60,7 +60,7 @@ router.get('/attendance/excel', authorizeRoles('admin', 'hr', 'payroll_operator'
               a.status as "Status", a.is_late as "Is Late", a.overtime_hours as "Overtime Hours"
        FROM attendance_records a
        JOIN employees e ON a.emp_id = e.id
-       LEFT JOIN departments d ON e.dept_id = d.id
+       LEFT JOIN departments d ON e.department_id = d.id
        WHERE a.date >= ? AND a.date <= ?
        ORDER BY a.date ASC, e.emp_code ASC`,
       [startDate, endDate]
@@ -88,7 +88,7 @@ router.get('/payslip/:entryId', authorizeRoles('admin', 'hr', 'payroll_operator'
               d.name as department, p.month, p.year
        FROM salary_entries s
        JOIN employees e ON s.emp_id = e.id
-       LEFT JOIN departments d ON e.dept_id = d.id
+       LEFT JOIN departments d ON e.department_id = d.id
        JOIN salary_periods p ON s.period_id = p.id
        WHERE s.id = ?`,
       [entryId]
