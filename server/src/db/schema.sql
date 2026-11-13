@@ -397,8 +397,8 @@ CREATE TABLE IF NOT EXISTS system_settings (
 -- SEED: Default Admin User (password: admin123)
 -- ============================================================
 INSERT IGNORE INTO users (username, password_hash, full_name, role) VALUES
-('admin', '$2b$10$rQZ9uAVn3GHdqzVOZY/MqeK1vNqy9EzAkX3qHvxN2mC5bD7wI4N6G', 'System Administrator', 'admin'),
-('guard', '$2b$10$rQZ9uAVn3GHdqzVOZY/MqeK1vNqy9EzAkX3qHvxN2mC5bD7wI4N6G', 'Security Guard', 'security_guard');
+('admin', '$2a$10$pWmRhqBvX53LLojHWhhobusxTKSg/SHWiVV4w./Dve3u/lCwNt2DC', 'System Administrator', 'admin'),
+('guard', '$2a$10$pWmRhqBvX53LLojHWhhobusxTKSg/SHWiVV4w./Dve3u/lCwNt2DC', 'Security Guard', 'security_guard');
 
 -- ============================================================
 -- SEED: Default Departments
