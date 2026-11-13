@@ -164,6 +164,113 @@ export async function runAutoMigrations(): Promise<void> {
     } catch (e: any) {
       console.warn('Note on annual increment cycle migration:', e.message);
     }
+
+    // 8. Ensure audit_logs table exists
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          user_id INT NULL,
+          username VARCHAR(50) NULL,
+          action VARCHAR(50) NOT NULL,
+          module VARCHAR(50) NULL,
+          record_id INT NULL,
+          record_ref VARCHAR(100) NULL,
+          details JSON NULL,
+          reason TEXT NULL,
+          ip_address VARCHAR(45) NULL,
+          user_agent TEXT NULL,
+          status ENUM('success','failed') DEFAULT 'success',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+          INDEX idx_user (user_id),
+          INDEX idx_action (action),
+          INDEX idx_module (module),
+          INDEX idx_created (created_at)
+        ) ENGINE=InnoDB
+      `);
+      console.log('✅ Checked/created audit_logs table');
+    } catch (e: any) {
+      console.warn('Note on audit_logs table migration:', e.message);
+    }
+
+    // 9. Ensure data_archives table exists
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS data_archives (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          archive_name VARCHAR(200) NOT NULL,
+          module ENUM('attendance','salary','employees','advances','all') NOT NULL,
+          date_from DATE NULL,
+          date_to DATE NULL,
+          emp_id INT NULL,
+          record_count INT DEFAULT 0,
+          file_path VARCHAR(500) NULL,
+          file_size_bytes BIGINT DEFAULT 0,
+          checksum VARCHAR(64) NULL,
+          verified TINYINT(1) DEFAULT 0,
+          verified_at DATETIME NULL,
+          status ENUM('creating','ready','restored','deleted','corrupted') DEFAULT 'creating',
+          restore_notes TEXT NULL,
+          created_by INT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+          INDEX idx_module (module),
+          INDEX idx_status (status),
+          INDEX idx_dates (date_from, date_to)
+        ) ENGINE=InnoDB
+      `);
+      console.log('✅ Checked/created data_archives table');
+    } catch (e: any) {
+      console.warn('Note on data_archives table migration:', e.message);
+    }
+
+    // 10. Ensure backup_snapshots table exists
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS backup_snapshots (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          snapshot_name VARCHAR(200) NOT NULL,
+          type ENUM('full','selective') DEFAULT 'full',
+          file_path VARCHAR(500) NULL,
+          file_size_bytes BIGINT DEFAULT 0,
+          checksum VARCHAR(64) NULL,
+          verified TINYINT(1) DEFAULT 0,
+          verified_at DATETIME NULL,
+          covers_from DATE NULL,
+          covers_to DATE NULL,
+          notes TEXT NULL,
+          status ENUM('creating','ready','failed') DEFAULT 'creating',
+          created_by INT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+          INDEX idx_status (status),
+          INDEX idx_created (created_at)
+        ) ENGINE=InnoDB
+      `);
+      console.log('✅ Checked/created backup_snapshots table');
+    } catch (e: any) {
+      console.warn('Note on backup_snapshots table migration:', e.message);
+    }
+
+    // 11. Ensure system_settings table exists
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS system_settings (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          setting_key VARCHAR(100) UNIQUE NOT NULL,
+          setting_value TEXT NULL,
+          description TEXT NULL,
+          updated_by INT NULL,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB
+      `);
+      console.log('✅ Checked/created system_settings table');
+    } catch (e: any) {
+      console.warn('Note on system_settings table migration:', e.message);
+    }
   } catch (err: any) {
     console.error('Migration check warning:', err.message);
   }

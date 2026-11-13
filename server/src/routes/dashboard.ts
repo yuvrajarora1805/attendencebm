@@ -167,8 +167,9 @@ router.get('/recent-activity', async (req: Request, res: Response) => {
        ORDER BY al.created_at DESC LIMIT 10`
     );
     res.json({ success: true, data: logs });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+  } catch (err: any) {
+    console.error('Error fetching recent-activity audit logs:', err?.message || err);
+    res.json({ success: true, data: [] });
   }
 });
 
