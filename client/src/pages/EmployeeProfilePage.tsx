@@ -440,31 +440,31 @@ export const EmployeeProfilePage: React.FC = () => {
                       ₹{Number(advance_info?.max_expected_advance || 0).toLocaleString()}
                     </div>
                   </div>
-                </>
-              )}
 
-              <div style={{ background: 'rgba(255,255,255,0.7)', padding: '10px 14px', borderRadius: '8px' }}>
-                <div style={{ fontSize: '11px', color: '#64748b' }}>Existing Unpaid Advance</div>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: (Number(advance_info?.current_advance_balance || 0) > 0) ? '#dc2626' : '#16a34a' }}>
-                  ₹{Number(advance_info?.current_advance_balance || 0).toLocaleString()}
-                </div>
-                <div style={{ fontSize: '10px', color: Number(advance_info?.current_advance_balance || 0) > 0 ? '#b91c1c' : '#15803d', marginTop: '2px' }}>
-                  {Number(advance_info?.current_advance_balance || 0) > 0 ? 'Current Net Outstanding Debt' : '✓ No Outstanding Debt'}
-                </div>
-              </div>
-
-              {Number(advance_info?.monthly_advance_deduction || 0) > 0 && (
-                <div style={{ background: 'rgba(255,255,255,0.85)', padding: '10px 14px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-                  <div style={{ fontSize: '11px', color: '#1e40af', fontWeight: 600 }}>Recovery Installment Plan</div>
-                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#1d4ed8' }}>
-                    ₹{Number(advance_info.monthly_advance_deduction).toLocaleString()}/mo
+                  <div style={{ background: 'rgba(255,255,255,0.7)', padding: '10px 14px', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>Existing Unpaid Advance</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: (Number(advance_info?.current_advance_balance || 0) > 0) ? '#dc2626' : '#16a34a' }}>
+                      ₹{Number(advance_info?.current_advance_balance || 0).toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: '10px', color: Number(advance_info?.current_advance_balance || 0) > 0 ? '#b91c1c' : '#15803d', marginTop: '2px' }}>
+                      {Number(advance_info?.current_advance_balance || 0) > 0 ? 'Current Net Outstanding Debt' : '✓ No Outstanding Debt'}
+                    </div>
                   </div>
-                  {advance_info?.months_to_clear_advance && (
-                    <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
-                      Est. {advance_info.months_to_clear_advance} month(s) to clear balance
+
+                  {Number(advance_info?.monthly_advance_deduction || 0) > 0 && (
+                    <div style={{ background: 'rgba(255,255,255,0.85)', padding: '10px 14px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+                      <div style={{ fontSize: '11px', color: '#1e40af', fontWeight: 600 }}>Recovery Installment Plan</div>
+                      <div style={{ fontSize: '15px', fontWeight: 700, color: '#1d4ed8' }}>
+                        ₹{Number(advance_info.monthly_advance_deduction).toLocaleString()}/mo
+                      </div>
+                      {advance_info?.months_to_clear_advance && (
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                          Est. {advance_info.months_to_clear_advance} month(s) to clear balance
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
         </div>

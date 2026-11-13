@@ -20,6 +20,7 @@ export const BatchAdvanceModal: React.FC<BatchAdvanceModalProps> = ({
 }) => {
   const { hasRole } = useAuth();
   const isAdmin = hasRole('admin');
+  const isManager = hasRole('manager') && !isAdmin;
 
   const [loading, setLoading] = useState(true);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -29,7 +30,7 @@ export const BatchAdvanceModal: React.FC<BatchAdvanceModalProps> = ({
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [customAmounts, setCustomAmounts] = useState<{ [id: number]: string }>({});
   const [customReasons, setCustomReasons] = useState<{ [id: number]: string }>({});
-  const [batchRecoveryType, setBatchRecoveryType] = useState<'installment' | 'full'>('installment');
+  const [batchRecoveryType, setBatchRecoveryType] = useState<'installment' | 'full'>(isManager ? 'full' : 'installment');
   const [batchMonthlyCut, setBatchMonthlyCut] = useState<string>('2000');
   const [customMonthlyDeductions, setCustomMonthlyDeductions] = useState<{ [id: number]: string }>({});
 
@@ -609,59 +610,80 @@ export const BatchAdvanceModal: React.FC<BatchAdvanceModalProps> = ({
         </div>
 
         {/* Recovery Term Configuration Strip */}
-        <div style={{
-          padding: '10px 24px',
-          background: '#eff6ff',
-          borderTop: '1px solid #bfdbfe',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px',
-          fontSize: '12px',
-          flexShrink: 0
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 700, color: '#1e40af' }}>💳 Recovery Terms for Selected:</span>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600 }}>
-              <input 
-                type="radio" 
-                name="batchRecType" 
-                checked={batchRecoveryType === 'installment'} 
-                onChange={() => setBatchRecoveryType('installment')} 
-              />
-              <span>Fixed Monthly Cut:</span>
-            </label>
-            {batchRecoveryType === 'installment' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ fontWeight: 700, color: '#1e40af' }}>₹</span>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  className="form-input"
-                  style={{ width: '90px', height: '28px', padding: '2px 6px', fontSize: '12px', fontWeight: 700 }}
-                  value={batchMonthlyCut}
-                  onChange={(e) => setBatchMonthlyCut(e.target.value)}
-                  placeholder="2000"
+        {isAdmin ? (
+          <div style={{
+            padding: '10px 24px',
+            background: '#eff6ff',
+            borderTop: '1px solid #bfdbfe',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            fontSize: '12px',
+            flexShrink: 0
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, color: '#1e40af' }}>💳 Recovery Terms for Selected:</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600 }}>
+                <input 
+                  type="radio" 
+                  name="batchRecType" 
+                  checked={batchRecoveryType === 'installment'} 
+                  onChange={() => setBatchRecoveryType('installment')} 
                 />
-                <span style={{ color: '#475569' }}>/month per employee</span>
-              </div>
-            )}
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', marginLeft: '6px' }}>
-              <input 
-                type="radio" 
-                name="batchRecType" 
-                checked={batchRecoveryType === 'full'} 
-                onChange={() => setBatchRecoveryType('full')} 
-              />
-              <span>Full Deduction in Next Month</span>
-            </label>
+                <span>Fixed Monthly Cut:</span>
+              </label>
+              {batchRecoveryType === 'installment' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ fontWeight: 700, color: '#1e40af' }}>₹</span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    className="form-input"
+                    style={{ width: '90px', height: '28px', padding: '2px 6px', fontSize: '12px', fontWeight: 700 }}
+                    value={batchMonthlyCut}
+                    onChange={(e) => setBatchMonthlyCut(e.target.value)}
+                    placeholder="2000"
+                  />
+                  <span style={{ color: '#475569' }}>/month per employee</span>
+                </div>
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', marginLeft: '6px' }}>
+                <input 
+                  type="radio" 
+                  name="batchRecType" 
+                  checked={batchRecoveryType === 'full'} 
+                  onChange={() => setBatchRecoveryType('full')} 
+                />
+                <span>Full Deduction in Next Month</span>
+              </label>
+            </div>
+            <div style={{ fontSize: '11px', color: '#1e40af' }}>
+              ℹ️ Auto-deducted during monthly salary Calculate / Sync until debt clears
+            </div>
           </div>
-          <div style={{ fontSize: '11px', color: '#1e40af' }}>
-            ℹ️ Auto-deducted during monthly salary Calculate / Sync until debt clears
+        ) : (
+          <div style={{
+            padding: '10px 24px',
+            background: '#eff6ff',
+            borderTop: '1px solid #bfdbfe',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '12px',
+            color: '#1e40af',
+            flexShrink: 0
+          }}>
+            <span style={{ fontWeight: 600 }}>
+              💳 Recovery Terms: <strong>Full Deduction in Next Month's Payroll</strong>
+            </span>
+            <span style={{ fontSize: '11px', color: '#64748b' }}>
+              ℹ️ Automatically scheduled for payroll deduction
+            </span>
           </div>
-        </div>
+        )}
 
         {/* Modal Sticky Bottom Action Bar */}
         <div style={{
