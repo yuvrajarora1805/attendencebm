@@ -230,47 +230,31 @@ async function run() {
     }
   }
 
-  // 8. Advances (Transections)
-  console.log('💳 [7/7] Processing 82,402 Advance Transactions (Transections)...');
-  const transLines = fs.readFileSync(path.join(tmpDir, 'Transections.csv'), 'utf8').trim().split('\n');
+  // 8. Advances (Derived from AccMaster opening balances & MonthlySalary actual transactions)
+  console.log('💳 [7/7] Processing Advance Transactions & Salary Recoveries...');
   const advVals = [];
   let validAdvCount = 0;
 
-  for (let i = 1; i < transLines.length; i++) {
-    const row = parseCSVLine(transLines[i]);
-    if (row.length < 8 || !row[0]) continue;
-
+  // 8a. AccMaster Opening Balances
+  for (let i = 1; i < accLines.length; i++) {
+    const row = parseCSVLine(accLines[i]);
+    if (row.length < 17 || !row[0]) continue;
     const aCode = parseInt(row[0]);
     if (!empIdSet.has(aCode)) continue;
-
-    const amount = Math.abs(parseFloat(row[1]) || 0);
-    if (amount === 0) continue;
-
-    const statusStr = (row[2] || '').trim().toLowerCase();
-    const type = statusStr === 'debit' ? 'given' : 'deduction';
-    const narration = (row[3] || '').trim();
-    const flag = (row[4] || '').trim() || 'SALARYPAYMENT';
-    const voucherRef = parseInt(row[5]) || null;
-    const tDateRaw = (row[7] || '').trim();
-
-    let tDate = '2024-01-01';
-    if (tDateRaw) {
-      const d = new Date(tDateRaw);
-      if (!isNaN(d.getTime())) tDate = d.toISOString().split('T')[0];
+    const aOpBal = Math.abs(parseFloat(row[3]) || 0);
+    if (aOpBal === 0) continue;
+    const aStatus = (row[4] || '').trim().toLowerCase() === 'credit' ? 'credit' : 'debit';
+    const type = aStatus === 'debit' ? 'given' : 'deduction';
+    const jDateRaw = (row[14] || '').trim();
+    let opDate = '2015-04-01';
+    if (jDateRaw) {
+      const d = new Date(jDateRaw);
+      if (!isNaN(d.getTime())) opDate = d.toISOString().split('T')[0];
     }
-
-    const remarks = narration || (type === 'given' ? 'Advance Disbursed' : 'Advance Deduction');
-
     advVals.push(
-      `(${aCode}, ${sqlEscape(tDate)}, ${sqlEscape(type)}, ${amount}, ${sqlEscape(flag)}, ${sqlEscape(voucherRef)}, ${sqlEscape(remarks)}, 'cash')`
+      `(${aCode}, ${sqlEscape(opDate)}, ${sqlEscape(type)}, ${aOpBal}, 'AccMaster', NULL, 'Opening Advance Balance', 'cash')`
     );
     validAdvCount++;
-  }
-
-  out.write(`-- Advance Transactions (${validAdvCount} records)\n`);
-  for (let i = 0; i < advVals.length; i += 1000) {
-    const chunk = advVals.slice(i, i + 1000);
-    out.write(`INSERT INTO advance_transactions (emp_id, date, type, amount, source_flag, voucher_ref, remarks, mode) VALUES\n${chunk.join(',\n')};\n\n`);
   }
 
   // 9. Monthly Salary (MonthlySalary)
@@ -344,9 +328,32 @@ async function run() {
 
     const presentDays = Math.max(0, workingDays - finalLeaves);
 
+    // 8b. Real Advances Taken & Deducted from Monthly Payroll
+    if (advanceGiven > 0) {
+      const advDate = fromDate || `${yearNum}-${String(monthNum).padStart(2, '0')}-01`;
+      advVals.push(
+        `(${aCode}, ${sqlEscape(advDate)}, 'given', ${advanceGiven}, 'MONTHLY_PAYROLL', ${sqlEscape(vNo)}, ${sqlEscape(`Advance Disbursed (${monthName.toUpperCase()} ${yearNum})`)}, 'cash')`
+      );
+      validAdvCount++;
+    }
+
+    if (advanceDeduction > 0) {
+      const dedDate = paymentDate || toDate || `${yearNum}-${String(monthNum).padStart(2, '0')}-28`;
+      advVals.push(
+        `(${aCode}, ${sqlEscape(dedDate)}, 'deduction', ${advanceDeduction}, 'MONTHLY_PAYROLL', ${sqlEscape(vNo)}, ${sqlEscape(`Salary Deduction (${monthName.toUpperCase()} ${yearNum})`)}, 'cash')`
+      );
+      validAdvCount++;
+    }
+
     salRows.push(
       `(${periodId}, ${aCode}, ${sqlEscape(vNo)}, ${sqlEscape(vDate)}, ${basicSalary}, ${salaryPerDay}, ${workingDays}, ${presentDays}, ${actualLeaves}, ${finalLeaves}, ${leavesAmount}, ${opBalance}, ${advanceGiven}, ${advanceDeduction}, ${advanceCf}, ${netSalary}, ${otherDeduction}, ${otherIncentives}, ${grossAmount}, ${sqlEscape(paymentDate)}, ${paid}, ${sqlEscape(narration)})`
     );
+  }
+
+  out.write(`-- Advance Transactions (${validAdvCount} records)\n`);
+  for (let i = 0; i < advVals.length; i += 1000) {
+    const chunk = advVals.slice(i, i + 1000);
+    out.write(`INSERT INTO advance_transactions (emp_id, date, type, amount, source_flag, voucher_ref, remarks, mode) VALUES\n${chunk.join(',\n')};\n\n`);
   }
 
   out.write(`-- Salary Periods (${periodRows.length} periods)\n`);
