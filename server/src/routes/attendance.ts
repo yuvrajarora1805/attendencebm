@@ -12,7 +12,7 @@ router.post('/punch', async (req: Request, res: Response) => {
     return res.status(403).json({ success: false, message: 'Not authorized to punch' });
   }
 
-  const { emp_code, action, punch_time, punch_date, notes } = req.body;
+  const { emp_code, action, punch_time, punch_date, notes, in_time, out_time, punch_out_time } = req.body;
   if (!emp_code || !action) return res.status(400).json({ success: false, message: 'emp_code and action required' });
 
   try {
@@ -155,6 +155,95 @@ router.post('/punch', async (req: Request, res: Response) => {
         message: `Punch Out recorded${overtimeHours > 0 ? ' (OT: ' + overtimeHours + 'h)' : ''}`,
         emp_name: emp.name,
         time: now,
+        overtime_hours: overtimeHours
+      });
+    } else if (targetAction === 'both') {
+      const inTimeStr = in_time || punch_time || '09:00';
+      const outTimeStr = out_time || punch_out_time || '18:00';
+
+      const inDateTime = new Date(`${punchDateStr}T${inTimeStr.length === 5 ? inTimeStr + ':00' : inTimeStr}`);
+      let outDateTime = new Date(`${punchDateStr}T${outTimeStr.length === 5 ? outTimeStr + ':00' : outTimeStr}`);
+      if (outDateTime <= inDateTime) {
+        // Cross-midnight shift handling (e.g. 21:00 to 06:00)
+        outDateTime = new Date(outDateTime.getTime() + 24 * 60 * 60 * 1000);
+      }
+
+      const [schedRows] = await pool.query<any[]>('SELECT * FROM work_schedules WHERE is_default = 1 LIMIT 1');
+      const sched = schedRows[0];
+      let isLate = 0;
+      let lateMinutes = 0;
+      let overtimeHours = 0;
+
+      if (sched) {
+        const [hStart, mStart] = sched.work_start.split(':').map(Number);
+        const schedStart = new Date(inDateTime);
+        schedStart.setHours(hStart, mStart + sched.late_threshold_minutes, 0, 0);
+        if (inDateTime > schedStart) {
+          isLate = 1;
+          lateMinutes = Math.floor((inDateTime.getTime() - schedStart.getTime()) / 60000);
+        }
+
+        const [hEnd, mEnd] = sched.work_end.split(':').map(Number);
+        const schedEnd = new Date(outDateTime);
+        schedEnd.setHours(hEnd, mEnd, 0, 0);
+        if (outDateTime > schedEnd) {
+          overtimeHours = parseFloat(((outDateTime.getTime() - schedEnd.getTime()) / 3600000).toFixed(2));
+        }
+      }
+
+      const status = isLate ? 'late' : 'present';
+      const combinedNotes = notes ? `[In+Out] ${notes}` : '[Supervisor In+Out Punch]';
+
+      if (existing) {
+        await pool.query(
+          `UPDATE attendance_records SET 
+             punch_in = ?, 
+             punch_out = ?, 
+             is_late = ?, 
+             late_minutes = ?, 
+             overtime_hours = ?, 
+             status = ?, 
+             punched_by = ?, 
+             notes = ?, 
+             is_corrected = 1, 
+             correction_reason = ? 
+           WHERE id = ?`,
+          [inDateTime, outDateTime, isLate, lateMinutes, overtimeHours, status, req.user!.id, combinedNotes, 'Manual In+Out override', existing.id]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO attendance_records 
+             (emp_id, date, punch_in, punch_out, is_late, late_minutes, overtime_hours, status, punched_by, notes) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [emp.id, today, inDateTime, outDateTime, isLate, lateMinutes, overtimeHours, status, req.user!.id, combinedNotes]
+        );
+      }
+
+      try {
+        await auditLog(
+          req.user?.id || null,
+          req.user?.username || 'terminal',
+          'punch_both',
+          'attendance',
+          emp.id,
+          `${emp.name} (${emp.emp_code})`,
+          { action: 'both', punch_in: inDateTime, punch_out: outDateTime, is_late: isLate, late_minutes: lateMinutes, overtime_hours: overtimeHours },
+          `Punch In & Out: ${emp.name} (${emp.emp_code}) - IN: ${inTimeStr}, OUT: ${outTimeStr}${overtimeHours > 0 ? ', OT: ' + overtimeHours + 'h' : ''}`,
+          req
+        );
+      } catch (logErr) {
+        console.error('Audit log error on punch both:', logErr);
+      }
+
+      return res.json({
+        success: true,
+        action: 'both',
+        message: `Shift attendance recorded for ${emp.name} (IN: ${inTimeStr}, OUT: ${outTimeStr})${isLate ? ' - Late ' + lateMinutes + 'm' : ''}${overtimeHours > 0 ? ' - OT ' + overtimeHours + 'h' : ''}`,
+        emp_name: emp.name,
+        punch_in: inDateTime,
+        punch_out: outDateTime,
+        is_late: isLate === 1,
+        late_minutes: lateMinutes,
         overtime_hours: overtimeHours
       });
     }

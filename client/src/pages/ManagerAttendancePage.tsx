@@ -42,7 +42,9 @@ export const ManagerAttendancePage: React.FC = () => {
 
   // Punch form state
   const [empCode, setEmpCode] = useState('');
-  const [punchAction, setPunchAction] = useState<'auto' | 'in' | 'out'>('auto');
+  const [punchAction, setPunchAction] = useState<'auto' | 'in' | 'out' | 'both'>('auto');
+  const [inTime, setInTime] = useState('09:00');
+  const [outTime, setOutTime] = useState('18:00');
   const [useCustomTime, setUseCustomTime] = useState(true);
   const [customTime, setCustomTime] = useState(() => {
     const d = new Date();
@@ -101,7 +103,10 @@ export const ManagerAttendancePage: React.FC = () => {
         punch_date: selectedDate,
       };
 
-      if (useCustomTime && customTime) {
+      if (punchAction === 'both') {
+        payload.in_time = inTime;
+        payload.out_time = outTime;
+      } else if (useCustomTime && customTime) {
         payload.punch_time = customTime;
       }
       if (punchReason.trim()) {
@@ -220,9 +225,9 @@ export const ManagerAttendancePage: React.FC = () => {
   };
 
   // Pre-fill punch form
-  const handleQuickPunch = (code: string) => {
+  const handleQuickPunch = (code: string, act: 'in' | 'both' = 'both') => {
     setEmpCode(code);
-    setPunchAction('in');
+    setPunchAction(act);
     window.scrollTo({ top: 120, behavior: 'smooth' });
   };
 
@@ -448,19 +453,19 @@ export const ManagerAttendancePage: React.FC = () => {
               display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px',
               padding: '3px', marginBottom: '14px', border: '1px solid var(--border-color)'
             }}>
-              {(['auto', 'in', 'out'] as const).map(act => (
+              {(['auto', 'in', 'out', 'both'] as const).map(act => (
                 <button
                   type="button"
                   key={act}
                   onClick={() => setPunchAction(act)}
                   style={{
-                    flex: 1, padding: '7px 4px', fontSize: '12px', fontWeight: 700, borderRadius: '6px',
+                    flex: 1, padding: '7px 2px', fontSize: '11px', fontWeight: 700, borderRadius: '6px',
                     border: 'none', cursor: 'pointer', transition: 'var(--transition)',
                     background: punchAction === act ? 'var(--accent-primary)' : 'transparent',
                     color: punchAction === act ? '#fff' : 'var(--text-secondary)'
                   }}
                 >
-                  {act === 'auto' ? '⚡ AUTO' : act === 'in' ? '🟢 IN' : '🔵 OUT'}
+                  {act === 'auto' ? '⚡ AUTO' : act === 'in' ? '🟢 IN' : act === 'out' ? '🔵 OUT' : '⏱️ BOTH'}
                 </button>
               ))}
             </div>
@@ -519,35 +524,96 @@ export const ManagerAttendancePage: React.FC = () => {
               )}
             </div>
 
-            {/* Time Option */}
-            <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '10px', marginBottom: '14px', border: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: useCustomTime ? '8px' : '0' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600 }}>Punch with Specific Time?</span>
-                <input
-                  type="checkbox"
-                  id="chk-custom-time"
-                  checked={useCustomTime}
-                  onChange={e => setUseCustomTime(e.target.checked)}
-                  style={{ cursor: 'pointer', width: '15px', height: '15px' }}
-                />
-              </div>
+            {/* Time Option: Dual In+Out vs Single Time */}
+            {punchAction === 'both' ? (
+              <div style={{
+                background: 'rgba(2, 132, 199, 0.06)', borderRadius: '10px', padding: '12px',
+                marginBottom: '14px', border: '1px solid rgba(2, 132, 199, 0.25)'
+              }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#0369a1', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Clock size={14} /> Full Shift Punch (IN & OUT Together)
+                </div>
 
-              {useCustomTime && (
-                <div>
-                  <input
-                    type="time"
-                    className="form-input"
-                    value={customTime}
-                    onChange={e => setCustomTime(e.target.value)}
-                    required
-                    style={{ fontSize: '13px' }}
-                  />
-                  <div style={{ fontSize: '10px', color: 'var(--accent-primary)', marginTop: '4px' }}>
-                    ⏰ Recorded with time: {customTime}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '11px', fontWeight: 700, color: '#16a34a', marginBottom: '3px' }}>
+                      🟢 Punch IN Time *
+                    </label>
+                    <input
+                      type="time"
+                      className="form-input"
+                      value={inTime}
+                      onChange={e => setInTime(e.target.value)}
+                      required
+                      style={{ fontSize: '13px', fontWeight: 700, padding: '6px 8px' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label" style={{ fontSize: '11px', fontWeight: 700, color: '#0284c7', marginBottom: '3px' }}>
+                      🔵 Punch OUT Time *
+                    </label>
+                    <input
+                      type="time"
+                      className="form-input"
+                      value={outTime}
+                      onChange={e => setOutTime(e.target.value)}
+                      required
+                      style={{ fontSize: '13px', fontWeight: 700, padding: '6px 8px' }}
+                    />
                   </div>
                 </div>
-              )}
-            </div>
+
+                {/* Duration & Overtime Preview */}
+                <div style={{
+                  fontSize: '11px', background: '#ffffff', border: '1px solid #cbd5e1',
+                  borderRadius: '6px', padding: '6px 10px', display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', color: '#475569'
+                }}>
+                  <span>Shift: <strong>{inTime}</strong> - <strong>{outTime}</strong></span>
+                  <span style={{ fontWeight: 800, color: '#0284c7' }}>
+                    {(() => {
+                      const [inH, inM] = inTime.split(':').map(Number);
+                      const [outH, outM] = outTime.split(':').map(Number);
+                      let mins = (outH * 60 + outM) - (inH * 60 + inM);
+                      if (mins < 0) mins += 24 * 60;
+                      const hrs = Math.floor(mins / 60);
+                      const remM = mins % 60;
+                      return `⏱️ ${hrs}h ${remM}m`;
+                    })()}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '10px', marginBottom: '14px', border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: useCustomTime ? '8px' : '0' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600 }}>Punch with Specific Time?</span>
+                  <input
+                    type="checkbox"
+                    id="chk-custom-time"
+                    checked={useCustomTime}
+                    onChange={e => setUseCustomTime(e.target.checked)}
+                    style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                  />
+                </div>
+
+                {useCustomTime && (
+                  <div>
+                    <input
+                      type="time"
+                      className="form-input"
+                      value={customTime}
+                      onChange={e => setCustomTime(e.target.value)}
+                      required
+                      style={{ fontSize: '13px' }}
+                    />
+                    <div style={{ fontSize: '10px', color: 'var(--accent-primary)', marginTop: '4px' }}>
+                      ⏰ Recorded with time: {customTime}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Supervisor Reason/Note */}
             <div className="form-group" style={{ marginBottom: '16px' }}>
@@ -568,7 +634,7 @@ export const ManagerAttendancePage: React.FC = () => {
               disabled={submitting || !empCode.trim()}
               style={{ width: '100%', padding: '10px', fontSize: '13px', fontWeight: 700, justifyContent: 'center' }}
             >
-              {submitting ? '⏳ Recording...' : 'Submit Attendance Punch'}
+              {submitting ? '⏳ Recording...' : punchAction === 'both' ? 'Submit Complete Shift (IN + OUT)' : 'Submit Attendance Punch'}
             </button>
           </form>
 
@@ -797,12 +863,12 @@ export const ManagerAttendancePage: React.FC = () => {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleQuickPunch(r.emp_code)}
+                                onClick={() => handleQuickPunch(r.emp_code, 'both')}
                                 style={{
                                   padding: '3px 7px', fontSize: '11px', fontWeight: 700, borderRadius: '5px',
                                   background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', cursor: 'pointer'
                                 }}
-                                title="Quick Punch In"
+                                title="Quick Full Shift Punch (IN+OUT)"
                               >
                                 ⚡ Punch
                               </button>
