@@ -47,8 +47,13 @@ export const ManagerAttendancePage: React.FC = () => {
   const [bannerAlert, setBannerAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Punch form state
+  const [defaultPunchMode, setDefaultPunchMode] = useState<'both' | 'auto' | 'in' | 'out'>(() => {
+    return (localStorage.getItem('default_punch_mode') as any) || 'both';
+  });
   const [empCode, setEmpCode] = useState('');
-  const [punchAction, setPunchAction] = useState<'auto' | 'in' | 'out' | 'both'>('auto');
+  const [punchAction, setPunchAction] = useState<'auto' | 'in' | 'out' | 'both'>(() => {
+    return (localStorage.getItem('default_punch_mode') as any) || 'both';
+  });
   const [inTime, setInTime] = useState('09:00');
   const [outTime, setOutTime] = useState('18:00');
   const [useCustomTime, setUseCustomTime] = useState(true);
@@ -261,9 +266,9 @@ export const ManagerAttendancePage: React.FC = () => {
   };
 
   // Pre-fill punch form
-  const handleQuickPunch = (code: string, act: 'in' | 'both' = 'both') => {
+  const handleQuickPunch = (code: string, act?: 'both' | 'auto' | 'in' | 'out') => {
     setEmpCode(code);
-    setPunchAction(act);
+    setPunchAction(act || defaultPunchMode);
     window.scrollTo({ top: 120, behavior: 'smooth' });
   };
 
@@ -484,26 +489,68 @@ export const ManagerAttendancePage: React.FC = () => {
           </div>
 
           <form onSubmit={handleManagerPunch}>
-            {/* Punch Action Toggle */}
-            <div style={{
-              display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px',
-              padding: '3px', marginBottom: '14px', border: '1px solid var(--border-color)'
-            }}>
-              {(['auto', 'in', 'out', 'both'] as const).map(act => (
+            {/* Punch Action Toggle & Default Preference */}
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)' }}>Punch Action</span>
                 <button
                   type="button"
-                  key={act}
-                  onClick={() => setPunchAction(act)}
-                  style={{
-                    flex: 1, padding: '7px 2px', fontSize: '11px', fontWeight: 700, borderRadius: '6px',
-                    border: 'none', cursor: 'pointer', transition: 'var(--transition)',
-                    background: punchAction === act ? 'var(--accent-primary)' : 'transparent',
-                    color: punchAction === act ? '#fff' : 'var(--text-secondary)'
+                  onClick={() => {
+                    const newDef = punchAction;
+                    localStorage.setItem('default_punch_mode', newDef);
+                    setDefaultPunchMode(newDef);
+                    setBannerAlert({
+                      type: 'success',
+                      message: `Default punch mode set to '${newDef === 'both' ? '⏱️ BOTH (IN+OUT)' : newDef === 'auto' ? '⚡ AUTO' : newDef === 'in' ? '🟢 IN' : '🔵 OUT'}'. This will open by default.`
+                    });
+                    setTimeout(() => setBannerAlert(null), 4000);
                   }}
+                  style={{
+                    background: defaultPunchMode === punchAction ? 'rgba(22, 163, 74, 0.1)' : 'transparent',
+                    border: defaultPunchMode === punchAction ? '1px solid rgba(22, 163, 74, 0.3)' : '1px dashed var(--border-color)',
+                    padding: '2px 7px',
+                    borderRadius: '5px',
+                    fontSize: '10px',
+                    color: defaultPunchMode === punchAction ? '#16a34a' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontWeight: 700
+                  }}
+                  title="Save currently active mode as your persistent default"
                 >
-                  {act === 'auto' ? '⚡ AUTO' : act === 'in' ? '🟢 IN' : act === 'out' ? '🔵 OUT' : '⏱️ BOTH'}
+                  {defaultPunchMode === punchAction ? '★ Current Default' : '☆ Set as Default'}
                 </button>
-              ))}
+              </div>
+
+              <div style={{
+                display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px',
+                padding: '3px', border: '1px solid var(--border-color)'
+              }}>
+                {(['both', 'auto', 'in', 'out'] as const).map(act => (
+                  <button
+                    type="button"
+                    key={act}
+                    onClick={() => setPunchAction(act)}
+                    style={{
+                      flex: 1, padding: '7px 2px', fontSize: '11px', fontWeight: 700, borderRadius: '6px',
+                      border: 'none', cursor: 'pointer', transition: 'var(--transition)',
+                      background: punchAction === act ? 'var(--accent-primary)' : 'transparent',
+                      color: punchAction === act ? '#fff' : 'var(--text-secondary)',
+                      position: 'relative'
+                    }}
+                  >
+                    {act === 'both' ? '⏱️ BOTH' : act === 'auto' ? '⚡ AUTO' : act === 'in' ? '🟢 IN' : '🔵 OUT'}
+                    {defaultPunchMode === act && (
+                      <span style={{
+                        position: 'absolute', top: '1px', right: '3px', fontSize: '9px',
+                        color: punchAction === act ? '#fef08a' : '#16a34a'
+                      }}>★</span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Employee Code */}
