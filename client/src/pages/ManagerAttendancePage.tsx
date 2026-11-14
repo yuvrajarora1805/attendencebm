@@ -209,6 +209,36 @@ export const ManagerAttendancePage: React.FC = () => {
     }
   };
 
+  // Disapprove leave (converts to Absent when Section Head rejects slip)
+  const handleDisapproveLeave = async (rec: any) => {
+    const empName = rec.name || rec.emp_name;
+    const leaveDate = rec.date || selectedDate;
+    const promptReason = window.prompt(
+      `Section Head Disapproved leave for ${empName} on ${leaveDate}.\n\nEnter Section Head disapproval reason / remarks:`,
+      'Workload / Excessive leaves'
+    );
+    if (promptReason === null) return;
+
+    try {
+      const res = await api.post('/attendance/leave/disapprove', {
+        emp_id: rec.emp_id || rec.id,
+        emp_code: rec.emp_code,
+        date: leaveDate,
+        reason: promptReason.trim() || 'Disapproved by Section Head'
+      });
+      setBannerAlert({
+        type: 'success',
+        message: res.data?.message || `Leave disapproved. ${empName} marked as ABSENT.`
+      });
+      loadData();
+    } catch (err: any) {
+      setBannerAlert({
+        type: 'error',
+        message: err.response?.data?.message || 'Failed to disapprove leave.'
+      });
+    }
+  };
+
   // Reset/Undo absent or leave record
   const handleResetRecord = async (recordId: number, empName: string) => {
     if (!window.confirm(`Reset attendance status for ${empName}? This will allow the employee to punch in.`)) {
@@ -882,22 +912,36 @@ export const ManagerAttendancePage: React.FC = () => {
                           ) : (isLeave || isAbsent) ? (
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                               {isLeave && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setLeaveSlipEmpId(r.emp_id || r.id);
-                                    setLeaveSlipDate(r.date || selectedDate);
-                                    setLeaveSlipModalOpen(true);
-                                  }}
-                                  style={{
-                                    padding: '3px 8px', fontSize: '11px', fontWeight: 700, borderRadius: '5px',
-                                    background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer',
-                                    display: 'inline-flex', alignItems: 'center', gap: '3px'
-                                  }}
-                                  title="Print / View Leave Slip for Section Head"
-                                >
-                                  <FileText size={11} /> 📄 Slip
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setLeaveSlipEmpId(r.emp_id || r.id);
+                                      setLeaveSlipDate(r.date || selectedDate);
+                                      setLeaveSlipModalOpen(true);
+                                    }}
+                                    style={{
+                                      padding: '3px 8px', fontSize: '11px', fontWeight: 700, borderRadius: '5px',
+                                      background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer',
+                                      display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                    }}
+                                    title="Print / View Leave Slip for Section Head"
+                                  >
+                                    <FileText size={11} /> 📄 Slip
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDisapproveLeave(r)}
+                                    style={{
+                                      padding: '3px 7px', fontSize: '11px', fontWeight: 600, borderRadius: '5px',
+                                      background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', cursor: 'pointer',
+                                      display: 'inline-flex', alignItems: 'center', gap: '2px'
+                                    }}
+                                    title="Disapprove leave and mark employee as Absent"
+                                  >
+                                    ✕ Disapprove
+                                  </button>
+                                </>
                               )}
                               <button
                                 type="button"

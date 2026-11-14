@@ -402,7 +402,7 @@ export const LeaveSlipPDF: React.FC<LeaveSlipPDFProps> = ({
                     </div>
                   </div>
 
-                  {/* Section Head Authorization Box (Highlighted with Stamp Area) */}
+                  {/* Section Head Authorization Box (Highlighted with Decision & Stamp Area) */}
                   <div style={{
                     border: '2px solid #0369a1', borderRadius: '6px', padding: '8px 10px', height: '110px',
                     display: 'flex', flexDirection: 'column', justifyContent: 'space-between', fontSize: '10px',
@@ -410,14 +410,23 @@ export const LeaveSlipPDF: React.FC<LeaveSlipPDFProps> = ({
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', fontSize: '10px' }}>
-                        APPROVED BY SECTION HEAD
+                        SECTION HEAD SANCTION
                       </span>
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#16a34a' }}>
-                        [✓] SANCTIONED
-                      </span>
+                      <div style={{ display: 'flex', gap: '6px', fontSize: '9px', fontWeight: 700 }}>
+                        <span style={{ border: '1px solid #16a34a', padding: '1px 5px', borderRadius: '3px', color: '#16a34a', background: '#f0fdf4' }}>
+                          [ &nbsp; ] APPROVED
+                        </span>
+                        <span style={{ border: '1px solid #dc2626', padding: '1px 5px', borderRadius: '3px', color: '#dc2626', background: '#fef2f2' }}>
+                          [ &nbsp; ] DISAPPROVED
+                        </span>
+                      </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: '1px solid #cbd5e1', paddingTop: '4px' }}>
+                    <div style={{ fontSize: '9px', color: '#64748b', fontStyle: 'italic', margin: '2px 0' }}>
+                      If Disapproved, remarks: ____________________________________
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: '1px solid #cbd5e1', paddingTop: '3px' }}>
                       <div style={{ fontSize: '9px', color: '#334155' }}>
                         <div>Section Head Signature: ____________</div>
                         <div style={{ marginTop: '2px' }}>Name / Dept: <strong>{emp.department_name || 'Department'}</strong></div>
@@ -425,9 +434,9 @@ export const LeaveSlipPDF: React.FC<LeaveSlipPDFProps> = ({
 
                       {/* Official Stamp Box */}
                       <div style={{
-                        width: '70px', height: '36px', border: '1px dashed #94a3b8', borderRadius: '4px',
+                        width: '74px', height: '36px', border: '1px dashed #94a3b8', borderRadius: '4px',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '8px',
-                        color: '#64748b', textAlign: 'center', lineHeight: 1.1
+                        color: '#64748b', textAlign: 'center', lineHeight: 1.1, background: '#ffffff'
                       }}>
                         SECTION HEAD<br/>STAMP / SEAL
                       </div>
@@ -448,3 +457,4 @@ export const LeaveSlipPDF: React.FC<LeaveSlipPDFProps> = ({
 };
 
 export default LeaveSlipPDF;
+

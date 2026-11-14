@@ -483,6 +483,67 @@ router.post('/leave', authorizeRoles('admin', 'hr', 'manager'), async (req: Requ
   }
 });
 
+// POST /api/attendance/leave/disapprove - Section Head disapproves leave; converted to Absent
+router.post('/leave/disapprove', authorizeRoles('admin', 'hr', 'manager'), async (req: Request, res: Response) => {
+  const { emp_id, emp_code, date, reason } = req.body;
+  if (!emp_id && !emp_code) {
+    return res.status(400).json({ success: false, message: 'emp_id or emp_code required' });
+  }
+  const targetDate = date || new Date().toISOString().split('T')[0];
+  const disapproveReason = reason || 'Disapproved by Section Head';
+
+  try {
+    const [empRows] = await pool.query<any[]>(
+      'SELECT id, name, emp_code FROM employees WHERE (id = ? OR emp_code = ?) LIMIT 1',
+      [emp_id || 0, (emp_code || '').toUpperCase()]
+    );
+    if (!empRows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+    const emp = empRows[0];
+
+    // 1. Update leave_records status to rejected
+    await pool.query(
+      `UPDATE leave_records 
+       SET status = 'rejected', reason = CONCAT(COALESCE(reason, ''), ' [Disapproved: ', ?, ']')
+       WHERE emp_id = ? AND (? BETWEEN from_date AND to_date)`,
+      [disapproveReason, emp.id, targetDate]
+    );
+
+    // 2. Update attendance_records status to absent
+    const notes = `[Leave Disapproved by Section Head] ${disapproveReason}`;
+    await pool.query(
+      `UPDATE attendance_records 
+       SET status = 'absent', notes = ?, is_corrected = 1, correction_reason = 'Disapproved by Section Head', punched_by = ?
+       WHERE emp_id = ? AND date = ?`,
+      [notes, req.user!.id, emp.id, targetDate]
+    );
+
+    await auditLog(
+      req.user!.id,
+      req.user!.username,
+      'edit',
+      'attendance',
+      emp.id,
+      `${emp.name} (${emp.emp_code})`,
+      { date: targetDate, status: 'absent', reason: disapproveReason },
+      `Leave disapproved by Section Head for ${emp.name} (${emp.emp_code}) on ${targetDate}. Marked as Absent.`,
+      req
+    );
+
+    return res.json({
+      success: true,
+      message: `Leave for ${emp.name} has been disapproved by Section Head. Attendance status updated to ABSENT.`,
+      data: {
+        emp_id: emp.id,
+        date: targetDate,
+        status: 'absent'
+      }
+    });
+  } catch (err: any) {
+    console.error('Error disapproving leave:', err);
+    return res.status(500).json({ success: false, message: 'Server error while disapproving leave' });
+  }
+});
+
 // GET /api/attendance/leave-slip/:empId - Fetch complete data for Leave Application & Sanction Slip PDF
 router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async (req: Request, res: Response) => {
   try {
