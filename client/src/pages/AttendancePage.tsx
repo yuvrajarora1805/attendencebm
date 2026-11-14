@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, CheckCircle2, Clock, XCircle, Edit3, RefreshCw, UserCheck, AlertCircle, Eye } from 'lucide-react';
+import { Calendar, CheckCircle2, Clock, XCircle, Edit3, RefreshCw, UserCheck, AlertCircle, Eye, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import Topbar from '../components/Topbar';
 import DataTable, { Column } from '../components/DataTable';
 import { useAuth } from '../context/AuthContext';
+import ManualPunchModal from '../components/ManualPunchModal';
 
 export const AttendancePage: React.FC = () => {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ export const AttendancePage: React.FC = () => {
   const [todayMeta, setTodayMeta] = useState<any>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [punchModalOpen, setPunchModalOpen] = useState(false);
   const { hasRole } = useAuth();
 
   const fetchAttendance = async (isBackground = false) => {
@@ -210,7 +212,18 @@ export const AttendancePage: React.FC = () => {
         title="Attendance Records"
         subtitle={viewMode === 'today' ? "Live today's checks & punch log" : "Monthly historical punch audit"}
         actions={
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {hasRole('admin', 'hr') && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ height: '34px', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={() => setPunchModalOpen(true)}
+              >
+                <Clock size={14} /> Punch Attendance
+              </button>
+            )}
+
             {/* View Mode Toggle Button Group */}
             <div style={{
               display: 'flex',
@@ -436,6 +449,12 @@ export const AttendancePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ManualPunchModal
+        isOpen={punchModalOpen}
+        onClose={() => setPunchModalOpen(false)}
+        onSuccess={() => fetchAttendance(false)}
+      />
     </div>
   );
 };

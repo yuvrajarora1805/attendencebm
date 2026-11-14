@@ -93,6 +93,7 @@ export const ManagerAttendancePage: React.FC = () => {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   });
   const [punchReason, setPunchReason] = useState('');
+  const [punchDate, setPunchDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [submitting, setSubmitting] = useState(false);
   const [punchResult, setPunchResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -179,10 +180,11 @@ export const ManagerAttendancePage: React.FC = () => {
     setPunchResult(null);
 
     try {
+      const targetDate = punchDate || selectedDate;
       const payload: any = {
         emp_code: empCode.trim().toUpperCase(),
         action: punchAction,
-        punch_date: selectedDate,
+        punch_date: targetDate,
       };
 
       if (punchAction === 'both') {
@@ -198,11 +200,15 @@ export const ManagerAttendancePage: React.FC = () => {
       const res = await api.post('/attendance/punch', payload);
       setPunchResult({
         type: 'success',
-        message: `✅ ${res.data.emp_name}: ${res.data.message || 'Punch recorded successfully'}`
+        message: `✅ ${res.data.emp_name}: ${res.data.message || 'Punch recorded successfully'} (${targetDate})`
       });
       setEmpCode('');
       setPunchReason('');
-      loadData();
+      if (targetDate === selectedDate) {
+        loadData();
+      } else {
+        setSelectedDate(targetDate);
+      }
     } catch (err: any) {
       setPunchResult({
         type: 'error',
@@ -660,6 +666,61 @@ export const ManagerAttendancePage: React.FC = () => {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Attendance Date (Custom Date Option) */}
+            <div className="form-group" style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Calendar size={13} color="var(--accent-primary)" /> Punch Date *
+                </label>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {punchDate !== new Date().toISOString().split('T')[0] && (
+                    <button
+                      type="button"
+                      onClick={() => setPunchDate(new Date().toISOString().split('T')[0])}
+                      style={{
+                        padding: '1px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '4px',
+                        border: '1px solid #93c5fd', background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer'
+                      }}
+                      title="Reset date to Today"
+                    >
+                      Today
+                    </button>
+                  )}
+                  {punchDate !== selectedDate && (
+                    <button
+                      type="button"
+                      onClick={() => setPunchDate(selectedDate)}
+                      style={{
+                        padding: '1px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '4px',
+                        border: '1px solid #cbd5e1', background: '#f8fafc', color: '#475569', cursor: 'pointer'
+                      }}
+                      title="Sync with current roster view date"
+                    >
+                      Sync View Date
+                    </button>
+                  )}
+                </div>
+              </div>
+              <input
+                type="date"
+                className="form-input"
+                value={punchDate}
+                onChange={e => setPunchDate(e.target.value)}
+                required
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  background: punchDate !== new Date().toISOString().split('T')[0] ? '#fffbeb' : undefined,
+                  borderColor: punchDate !== new Date().toISOString().split('T')[0] ? '#f59e0b' : undefined
+                }}
+              />
+              {punchDate !== new Date().toISOString().split('T')[0] && (
+                <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 600, marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  ⚠️ Custom Date: Recording punch for <strong>{punchDate}</strong>
+                </div>
+              )}
             </div>
 
             {/* Employee Code */}

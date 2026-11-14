@@ -21,19 +21,20 @@ router.post('/punch', async (req: Request, res: Response) => {
     const emp = empRows[0];
     
     // Support custom punch time / date if provided by manager/admin
-    let punchDateStr = punch_date;
+    let punchDateStr = punch_date ? String(punch_date).slice(0, 10) : new Date().toISOString().split('T')[0];
     let punchDateTime: Date;
+
+    const currentTimeStr = new Date().toTimeString().split(' ')[0]; // 'HH:MM:SS'
     if (punch_time) {
       if (punch_time.includes('T')) {
         punchDateTime = new Date(punch_time);
-        punchDateStr = punchDateTime.toISOString().split('T')[0];
+        punchDateStr = punch_date ? String(punch_date).slice(0, 10) : punchDateTime.toISOString().split('T')[0];
       } else {
-        punchDateStr = punch_date || new Date().toISOString().split('T')[0];
-        punchDateTime = new Date(`${punchDateStr}T${punch_time}:00`);
+        const timePart = punch_time.length === 5 ? `${punch_time}:00` : punch_time;
+        punchDateTime = new Date(`${punchDateStr}T${timePart}`);
       }
     } else {
-      punchDateTime = new Date();
-      punchDateStr = punchDateTime.toISOString().split('T')[0];
+      punchDateTime = new Date(`${punchDateStr}T${currentTimeStr}`);
     }
     const today = punchDateStr;
     const now = punchDateTime;
