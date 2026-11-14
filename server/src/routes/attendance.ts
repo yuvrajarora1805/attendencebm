@@ -567,8 +567,8 @@ router.post('/leave', authorizeRoles('admin', 'hr', 'manager'), async (req: Requ
 
   try {
     const [empRows] = await pool.query<any[]>(
-      'SELECT id, name, emp_code FROM employees WHERE (id = ? OR emp_code = ?) AND status = "active" LIMIT 1',
-      [emp_id || 0, (emp_code || '').toUpperCase()]
+      'SELECT id, name, emp_code FROM employees WHERE (id = ? OR emp_code = ?) AND status = "active" ORDER BY (id = ?) DESC LIMIT 1',
+      [emp_id || 0, (emp_code || '').toUpperCase(), emp_id || 0]
     );
     if (!empRows.length) {
       return res.status(404).json({ success: false, message: 'Active employee not found' });
@@ -660,8 +660,8 @@ router.post('/leave/disapprove', authorizeRoles('admin', 'hr', 'manager'), async
 
   try {
     const [empRows] = await pool.query<any[]>(
-      'SELECT id, name, emp_code FROM employees WHERE (id = ? OR emp_code = ?) LIMIT 1',
-      [emp_id || 0, (emp_code || '').toUpperCase()]
+      'SELECT id, name, emp_code FROM employees WHERE (id = ? OR emp_code = ?) ORDER BY (id = ?) DESC LIMIT 1',
+      [emp_id || 0, (emp_code || '').toUpperCase(), emp_id || 0]
     );
     if (!empRows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
     const emp = empRows[0];

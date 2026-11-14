@@ -483,6 +483,7 @@ router.get('/:id/increments', async (req: Request, res: Response) => {
 // GET /api/employees/:id
 router.get('/:id', async (req: Request, res: Response) => {
   try {
+    const paramId = req.params.id;
     const [rows] = await pool.query<any[]>(
       `SELECT e.*, d.name as department_name, c.name as city_name, jp.name as posting_name,
               ref.name as referred_by_emp_name, ref.emp_code as referred_by_emp_code,
@@ -495,8 +496,10 @@ router.get('/:id', async (req: Request, res: Response) => {
        LEFT JOIN job_postings jp ON e.posting_id = jp.id
        LEFT JOIN employees ref ON e.referred_by_emp_id = ref.id
        LEFT JOIN users approver ON e.salary_approved_by = approver.id
-       WHERE e.id = ? OR e.emp_code = ?`,
-      [req.params.id, req.params.id]
+       WHERE e.id = ? OR e.emp_code = ?
+       ORDER BY (e.id = ?) DESC
+       LIMIT 1`,
+      [paramId, paramId, paramId]
     );
     if (!rows.length) { res.status(404).json({ success: false, message: 'Employee not found' }); return; }
     
@@ -535,8 +538,10 @@ router.get('/:id/analytics', async (req: Request, res: Response) => {
        LEFT JOIN job_postings jp ON e.posting_id = jp.id
        LEFT JOIN employees ref ON e.referred_by_emp_id = ref.id
        LEFT JOIN users approver ON e.salary_approved_by = approver.id
-       WHERE e.id = ? OR e.emp_code = ?`,
-      [paramId, paramId]
+       WHERE e.id = ? OR e.emp_code = ?
+       ORDER BY (e.id = ?) DESC
+       LIMIT 1`,
+      [paramId, paramId, paramId]
     );
     if (!empRows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
     const emp = empRows[0];
@@ -855,7 +860,10 @@ router.get('/:id/analytics', async (req: Request, res: Response) => {
 router.get('/:id/stats', async (req: Request, res: Response) => {
   try {
     const paramId = req.params.id;
-    const [eRows]: any = await pool.query('SELECT id FROM employees WHERE id = ? OR emp_code = ? LIMIT 1', [paramId, paramId]);
+    const [eRows]: any = await pool.query(
+      'SELECT id FROM employees WHERE id = ? OR emp_code = ? ORDER BY (id = ?) DESC LIMIT 1',
+      [paramId, paramId, paramId]
+    );
     const empId = eRows.length ? eRows[0].id : paramId;
 
     const [totalAtt] = await pool.query<any[]>(
