@@ -698,6 +698,15 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
 
     const applicationNo = `LV-${targetDate.replace(/-/g, '')}-${emp.emp_code}`;
 
+    const paramLeaveType = (req.query.leave_type as string) || '';
+    const paramReason = (req.query.reason as string) || '';
+    const paramTotalDays = req.query.total_days ? parseFloat(req.query.total_days as string) : null;
+
+    const finalLeaveType = paramLeaveType || leaveRecord?.leave_type || (attRecord?.notes?.match(/\[Leave: ([^\]]+)\]/)?.[1] || 'casual');
+    const finalTotalDays = paramTotalDays !== null ? paramTotalDays : Number(leaveRecord?.total_days || (attRecord?.status === 'half_day' ? 0.5 : 1.0));
+    const finalReason = paramReason || leaveRecord?.reason || attRecord?.notes || 'Supervisor leave application for Section Head sanction';
+    const finalStatus = leaveRecord?.status || (attRecord?.status === 'leave' ? 'approved' : 'pending_signature');
+
     return res.json({
       success: true,
       data: {
@@ -707,10 +716,10 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
         employee: emp,
         leave: {
           date: targetDate,
-          leave_type: leaveRecord?.leave_type || (attRecord?.notes?.match(/\[Leave: ([^\]]+)\]/)?.[1] || 'casual'),
-          total_days: Number(leaveRecord?.total_days || (attRecord?.status === 'half_day' ? 0.5 : 1.0)),
-          reason: leaveRecord?.reason || attRecord?.notes || 'Supervisor approved leave',
-          status: leaveRecord?.status || 'approved',
+          leave_type: finalLeaveType,
+          total_days: finalTotalDays,
+          reason: finalReason,
+          status: finalStatus,
           approved_by_name: leaveRecord?.approver_name || req.user!.username,
           approved_at: leaveRecord?.approved_at || new Date()
         },
