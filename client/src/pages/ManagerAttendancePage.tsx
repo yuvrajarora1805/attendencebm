@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Clock, Calendar, UserCheck, CheckCircle2, AlertTriangle, 
   Search, ShieldAlert, ArrowRightCircle, Sparkles, RefreshCw, Send, DollarSign,
-  Palmtree, UserX, AlertCircle, RotateCcw, FileText, Printer
+  Palmtree, UserX, AlertCircle, RotateCcw, FileText, Printer,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -29,7 +30,37 @@ export const ManagerAttendancePage: React.FC = () => {
   const [departments, setDepartments] = useState<any[]>([]);
   const [selectedDept, setSelectedDept] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'present' | 'unpunched' | 'leave' | 'absent'>('all');
+
+  // Pagination & Chunking state (25 entries per chunk)
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 25,
+    totalRecords: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPrevPage: false,
+    startRecord: 0,
+    endRecord: 0
+  });
+  const [tabCounts, setTabCounts] = useState({
+    all: 0,
+    present: 0,
+    unpunched: 0,
+    leave: 0,
+    absent: 0
+  });
+
+  // Debounce search input to avoid unnecessary requests while typing
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [search]);
 
   // Modals
   const [advanceModalOpen, setAdvanceModalOpen] = useState(false);
@@ -71,19 +102,47 @@ export const ManagerAttendancePage: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const loadData = async (isBackground = false) => {
+  const loadData = async (isBackground = false, overridePage?: number) => {
     try {
       if (!isBackground) setLoading(true);
+      const targetPage = overridePage !== undefined ? overridePage : currentPage;
+      const params = new URLSearchParams({
+        date: selectedDate,
+        page: String(targetPage),
+        limit: String(pageSize),
+        tab: activeTab,
+        dept: selectedDept !== 'all' ? selectedDept : '',
+        search: debouncedSearch.trim()
+      });
+
       const [todayRes, deptRes, empRes] = await Promise.all([
-        api.get(`/attendance/today?date=${selectedDate}`).catch(() => ({ data: { data: [], unpunched: [], meta: {} } })),
+        api.get(`/attendance/today?${params.toString()}`).catch(() => ({ data: { data: [], pagination: null, meta: {}, tabCounts: {} } })),
         api.get('/employees/series-info')
           .catch(() => api.get('/employees/meta/departments'))
           .catch(() => ({ data: { data: [] } })),
         api.get('/employees?status=active').catch(() => ({ data: { data: [] } }))
       ]);
 
-      setRecords(todayRes.data?.data || []);
+      const chunkData = todayRes.data?.data || [];
+      setRecords(chunkData);
       setUnpunchedEmployees(todayRes.data?.unpunched || []);
+      if (todayRes.data?.pagination) {
+        setPagination(todayRes.data.pagination);
+      } else {
+        setPagination({
+          page: targetPage,
+          limit: pageSize,
+          totalRecords: chunkData.length,
+          totalPages: Math.max(1, Math.ceil(chunkData.length / pageSize)),
+          hasNextPage: false,
+          hasPrevPage: targetPage > 1,
+          startRecord: chunkData.length > 0 ? (targetPage - 1) * pageSize + 1 : 0,
+          endRecord: chunkData.length
+        });
+      }
+      if (todayRes.data?.tabCounts) {
+        setTabCounts(todayRes.data.tabCounts);
+      }
       if (todayRes.data?.meta) {
         setMeta(todayRes.data.meta);
       }
@@ -96,11 +155,21 @@ export const ManagerAttendancePage: React.FC = () => {
     }
   };
 
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedDate, activeTab, selectedDept, debouncedSearch, pageSize]);
+
+  // Load data whenever filters or currentPage change
   useEffect(() => {
     loadData();
+  }, [selectedDate, currentPage, pageSize, activeTab, selectedDept, debouncedSearch]);
+
+  // Periodic background update (silent 25s polling)
+  useEffect(() => {
     const interval = setInterval(() => loadData(true), 25000);
     return () => clearInterval(interval);
-  }, [selectedDate]);
+  }, [selectedDate, currentPage, pageSize, activeTab, selectedDept, debouncedSearch]);
 
   const handleManagerPunch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -328,42 +397,19 @@ export const ManagerAttendancePage: React.FC = () => {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [departments, records, unpunchedEmployees, allEmployees]);
 
-  // Department-aware tab counts
-  const tabCounts = useMemo(() => {
-    const filterDept = (item: any) => {
-      if (selectedDept === 'all') return true;
-      const dept = String(item.department_name || item.dept_name || '').trim().toLowerCase();
-      return dept === selectedDept.trim().toLowerCase();
-    };
-
-    const deptRecords = records.filter(filterDept);
-    const deptUnpunched = unpunchedEmployees.filter(filterDept);
-
-    const present = deptRecords.filter(r => r.punch_in != null).length;
-    const unpunched = deptUnpunched.length;
-    const leave = deptRecords.filter(r => r.status === 'leave').length;
-    const absent = deptRecords.filter(r => r.status === 'absent').length;
-    const all = deptRecords.length + deptUnpunched.length;
-
-    return { all, present, unpunched, leave, absent };
-  }, [records, unpunchedEmployees, selectedDept]);
-
-  // Filter combined records
-  // Build unified roster based on activeTab
-  let displayList: any[] = [];
-
-  const normalizedSearch = search.trim().toLowerCase();
-  const filterByDeptAndSearch = (item: any) => {
-    const dept = String(item.department_name || item.dept_name || '').trim().toLowerCase();
-    const matchesDept = selectedDept === 'all' || dept === selectedDept.trim().toLowerCase();
-    const matchesSearch = !normalizedSearch || 
-      String(item.name || '').toLowerCase().includes(normalizedSearch) ||
-      String(item.emp_code || '').toLowerCase().includes(normalizedSearch);
-    return matchesDept && matchesSearch;
+  // Effective tab counts (from backend chunk metadata or fallback)
+  const activeTabCounts = {
+    all: tabCounts.all || (meta.total_active_employees || 0),
+    present: tabCounts.present || (meta.punched_count || 0),
+    unpunched: tabCounts.unpunched || (meta.unpunched_count || unpunchedEmployees.length),
+    leave: tabCounts.leave || (meta.leave_count || 0),
+    absent: tabCounts.absent || (meta.absent_count || 0)
   };
 
-  if (activeTab === 'all') {
-    // Show recorded attendance + unpunched
+  // In chunked mode, records is already the paginated, filtered 25-entry slice from the server
+  let displayList: any[] = [];
+  if (unpunchedEmployees.length > 0 && records.every(r => !r.is_unpunched)) {
+    // Legacy fallback
     const unpunchedMapped = unpunchedEmployees.map(u => ({
       ...u,
       is_unpunched: true,
@@ -371,25 +417,12 @@ export const ManagerAttendancePage: React.FC = () => {
       punch_in: null,
       punch_out: null
     }));
-    displayList = [...records, ...unpunchedMapped].filter(filterByDeptAndSearch);
-  } else if (activeTab === 'present') {
-    displayList = records.filter(r => r.punch_in != null).filter(filterByDeptAndSearch);
-  } else if (activeTab === 'unpunched') {
-    const unpunchedMapped = unpunchedEmployees.map(u => ({
-      ...u,
-      is_unpunched: true,
-      status: 'unpunched',
-      punch_in: null,
-      punch_out: null
-    }));
-    displayList = unpunchedMapped.filter(filterByDeptAndSearch);
-  } else if (activeTab === 'leave') {
-    displayList = records.filter(r => r.status === 'leave').filter(filterByDeptAndSearch);
-  } else if (activeTab === 'absent') {
-    displayList = records.filter(r => r.status === 'absent').filter(filterByDeptAndSearch);
+    displayList = [...records, ...unpunchedMapped].slice(0, pageSize);
+  } else {
+    displayList = records;
   }
 
-  const unpunchedCount = meta.unpunched_count || unpunchedEmployees.length;
+  const unpunchedCount = meta.unpunched_count || activeTabCounts.unpunched;
 
   return (
     <div style={{ padding: '24px', maxWidth: '1360px', margin: '0 auto' }}>
@@ -817,54 +850,54 @@ export const ManagerAttendancePage: React.FC = () => {
             display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px', overflowX: 'auto'
           }}>
             <button
-              onClick={() => setActiveTab('all')}
+              onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
               style={{
                 padding: '6px 12px', fontSize: '12px', fontWeight: 700, borderRadius: '6px', border: 'none', cursor: 'pointer',
                 background: activeTab === 'all' ? '#1e293b' : '#f1f5f9',
                 color: activeTab === 'all' ? '#ffffff' : '#475569'
               }}
             >
-              All Staff ({tabCounts.all})
+              All Staff ({activeTabCounts.all})
             </button>
             <button
-              onClick={() => setActiveTab('present')}
+              onClick={() => { setActiveTab('present'); setCurrentPage(1); }}
               style={{
                 padding: '6px 12px', fontSize: '12px', fontWeight: 700, borderRadius: '6px', border: 'none', cursor: 'pointer',
                 background: activeTab === 'present' ? '#15803d' : '#f0fdf4',
                 color: activeTab === 'present' ? '#ffffff' : '#15803d'
               }}
             >
-              🟢 Present ({tabCounts.present})
+              🟢 Present ({activeTabCounts.present})
             </button>
             <button
-              onClick={() => setActiveTab('unpunched')}
+              onClick={() => { setActiveTab('unpunched'); setCurrentPage(1); }}
               style={{
                 padding: '6px 12px', fontSize: '12px', fontWeight: 700, borderRadius: '6px', border: 'none', cursor: 'pointer',
                 background: activeTab === 'unpunched' ? '#b45309' : '#fffbeb',
                 color: activeTab === 'unpunched' ? '#ffffff' : '#b45309'
               }}
             >
-              ⏳ Unpunched ({tabCounts.unpunched})
+              ⏳ Unpunched ({activeTabCounts.unpunched})
             </button>
             <button
-              onClick={() => setActiveTab('leave')}
+              onClick={() => { setActiveTab('leave'); setCurrentPage(1); }}
               style={{
                 padding: '6px 12px', fontSize: '12px', fontWeight: 700, borderRadius: '6px', border: 'none', cursor: 'pointer',
                 background: activeTab === 'leave' ? '#0284c7' : '#f0f9ff',
                 color: activeTab === 'leave' ? '#ffffff' : '#0284c7'
               }}
             >
-              🌴 On Leave ({tabCounts.leave})
+              🌴 On Leave ({activeTabCounts.leave})
             </button>
             <button
-              onClick={() => setActiveTab('absent')}
+              onClick={() => { setActiveTab('absent'); setCurrentPage(1); }}
               style={{
                 padding: '6px 12px', fontSize: '12px', fontWeight: 700, borderRadius: '6px', border: 'none', cursor: 'pointer',
                 background: activeTab === 'absent' ? '#dc2626' : '#fef2f2',
                 color: activeTab === 'absent' ? '#ffffff' : '#dc2626'
               }}
             >
-              🔴 Absent ({tabCounts.absent})
+              🔴 Absent ({activeTabCounts.absent})
             </button>
           </div>
 
@@ -1119,6 +1152,90 @@ export const ManagerAttendancePage: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Chunk Pagination Controls */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '12px 18px',
+            borderTop: '1px solid var(--border-color)',
+            background: '#fafafa',
+            flexWrap: 'wrap',
+            gap: '12px',
+            borderRadius: '0 0 14px 14px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>
+                Showing <strong>{pagination.startRecord}</strong> - <strong>{pagination.endRecord}</strong> of <strong>{pagination.totalRecords}</strong> staff
+              </span>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>Chunk Size:</span>
+                <select
+                  className="form-input"
+                  value={pageSize}
+                  onChange={e => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  style={{ height: '28px', fontSize: '11px', padding: '2px 8px', width: '95px' }}
+                >
+                  <option value={25}>25 / chunk</option>
+                  <option value={50}>50 / chunk</option>
+                  <option value={100}>100 / chunk</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={currentPage <= 1 || loading}
+                onClick={() => setCurrentPage(1)}
+                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px', opacity: currentPage <= 1 ? 0.4 : 1, cursor: currentPage <= 1 ? 'not-allowed' : 'pointer' }}
+                title="First Page"
+              >
+                <ChevronsLeft size={13} /> First
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={!pagination.hasPrevPage || loading}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px', opacity: !pagination.hasPrevPage ? 0.4 : 1, cursor: !pagination.hasPrevPage ? 'not-allowed' : 'pointer' }}
+                title="Previous 25 entries"
+              >
+                <ChevronLeft size={13} /> Prev
+              </button>
+
+              <div style={{ padding: '0 8px', fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
+                Page {pagination.page} of {pagination.totalPages}
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={!pagination.hasNextPage || loading}
+                onClick={() => setCurrentPage(prev => Math.min(pagination.totalPages, prev + 1))}
+                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px', opacity: !pagination.hasNextPage ? 0.4 : 1, cursor: !pagination.hasNextPage ? 'not-allowed' : 'pointer' }}
+                title="Next 25 entries"
+              >
+                Next <ChevronRight size={13} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={currentPage >= pagination.totalPages || loading}
+                onClick={() => setCurrentPage(pagination.totalPages)}
+                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px', opacity: currentPage >= pagination.totalPages ? 0.4 : 1, cursor: currentPage >= pagination.totalPages ? 'not-allowed' : 'pointer' }}
+                title="Last Page"
+              >
+                Last <ChevronsRight size={13} />
+              </button>
+            </div>
           </div>
         </div>
 

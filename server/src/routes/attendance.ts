@@ -253,79 +253,225 @@ router.post('/punch', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/attendance/today
+// GET /api/attendance/today - Supports chunked/paginated loading (?page=1&limit=25&tab=all&dept=...&search=...)
 router.get('/today', async (req: Request, res: Response) => {
   try {
     const queryDate = (req.query.date as string) || '';
     const today = queryDate || new Date().toISOString().split('T')[0];
+    const pageParam = req.query.page as string | undefined;
+    const limitParam = req.query.limit as string | undefined;
+    const tabParam = ((req.query.tab as string) || 'all').toLowerCase();
+    const deptParam = ((req.query.dept as string) || '').trim();
+    const searchParam = ((req.query.search as string) || '').trim();
 
-    const [rows] = await pool.query<any[]>(
-      `SELECT 
-         ar.*,
-         ar.id as attendance_record_id,
-         ar.id as record_id,
-         e.id as emp_id,
-         e.id as employee_id,
-         e.emp_code,
-         e.name,
-         e.name as emp_name,
-         d.name as department_name,
-         d.name as dept_name 
-       FROM attendance_records ar
-       JOIN employees e ON ar.emp_id = e.id 
-       LEFT JOIN departments d ON e.department_id = d.id
-       WHERE ar.date = ? AND ar.is_archived = 0 
-       ORDER BY COALESCE(ar.punch_out, ar.punch_in) DESC, ar.id DESC`,
-      [today]
-    );
+    // Determine whether caller requested chunked/paginated mode
+    const isPaginated = pageParam !== undefined || (limitParam !== undefined && limitParam !== 'all');
 
-    // Get unpunched active employees for today
-    const [unpunchedRows] = await pool.query<any[]>(
-      `SELECT 
-         NULL as attendance_record_id,
-         NULL as record_id,
-         e.id,
-         e.id as emp_id,
-         e.id as employee_id,
-         e.emp_code,
-         e.name,
-         e.name as emp_name,
-         d.name as department_name,
-         d.name as dept_name 
-       FROM employees e
-       LEFT JOIN departments d ON e.department_id = d.id
-       WHERE e.status = 'active'
-         AND e.id NOT IN (SELECT emp_id FROM attendance_records WHERE date = ? AND is_archived = 0)
-       ORDER BY e.emp_code ASC`,
-      [today]
-    );
-
-    // Also get active employee total to give a quick overview
+    // 1. Overall Company Summary Counts for Meta KPI Cards
     const [empSummary] = await pool.query<any[]>(
       `SELECT COUNT(*) as active_count FROM employees WHERE status = 'active'`
     );
+    const activeCount = empSummary[0]?.active_count || 0;
 
-    const activeCount = empSummary[0]?.active_count || (rows.length + unpunchedRows.length);
-    const punchedCount = rows.filter(r => r.punch_in != null).length;
-    const completedCount = rows.filter(r => r.punch_in != null && r.punch_out != null).length;
-    const activeInsideCount = rows.filter(r => r.punch_in != null && !r.punch_out).length;
-    const leaveCount = rows.filter(r => r.status === 'leave').length;
-    const absentCount = rows.filter(r => r.status === 'absent').length;
+    const [statusSummary] = await pool.query<any[]>(
+      `SELECT 
+         COUNT(CASE WHEN punch_in IS NOT NULL THEN 1 END) as punched_count,
+         COUNT(CASE WHEN punch_in IS NOT NULL AND punch_out IS NOT NULL THEN 1 END) as completed_count,
+         COUNT(CASE WHEN punch_in IS NOT NULL AND punch_out IS NULL THEN 1 END) as active_inside_count,
+         COUNT(CASE WHEN status = 'leave' THEN 1 END) as leave_count,
+         COUNT(CASE WHEN status = 'absent' THEN 1 END) as absent_count
+       FROM attendance_records
+       WHERE date = ? AND is_archived = 0`,
+      [today]
+    );
+    const punchedCount = statusSummary[0]?.punched_count || 0;
+    const completedCount = statusSummary[0]?.completed_count || 0;
+    const activeInsideCount = statusSummary[0]?.active_inside_count || 0;
+    const leaveCount = statusSummary[0]?.leave_count || 0;
+    const absentCount = statusSummary[0]?.absent_count || 0;
 
-    return res.json({ 
-      success: true, 
-      data: rows,
-      unpunched: unpunchedRows,
-      meta: {
-        today,
-        total_active_employees: activeCount,
-        punched_count: punchedCount,
-        active_inside_count: activeInsideCount,
-        completed_count: completedCount,
-        leave_count: leaveCount,
-        absent_count: absentCount,
-        unpunched_count: unpunchedRows.length
-      }
+    const [unpunchedSummary] = await pool.query<any[]>(
+      `SELECT COUNT(*) as unpunched_count
+       FROM employees e
+       WHERE e.status = 'active'
+         AND e.id NOT IN (SELECT emp_id FROM attendance_records WHERE date = ? AND is_archived = 0)`,
+      [today]
+    );
+    const unpunchedCount = unpunchedSummary[0]?.unpunched_count || 0;
+
+    const meta = {
+      today,
+      total_active_employees: activeCount,
+      punched_count: punchedCount,
+      active_inside_count: activeInsideCount,
+      completed_count: completedCount,
+      leave_count: leaveCount,
+      absent_count: absentCount,
+      unpunched_count: unpunchedCount
+    };
+
+    // If legacy non-paginated mode requested (e.g. from GuardPunchPage or AttendancePage)
+    if (!isPaginated) {
+      const [rows] = await pool.query<any[]>(
+        `SELECT 
+           ar.*,
+           ar.id as attendance_record_id,
+           ar.id as record_id,
+           e.id as emp_id,
+           e.id as employee_id,
+           e.emp_code,
+           e.name,
+           e.name as emp_name,
+           d.name as department_name,
+           d.name as dept_name 
+         FROM attendance_records ar
+         JOIN employees e ON ar.emp_id = e.id 
+         LEFT JOIN departments d ON e.department_id = d.id
+         WHERE ar.date = ? AND ar.is_archived = 0 
+         ORDER BY COALESCE(ar.punch_out, ar.punch_in) DESC, ar.id DESC`,
+        [today]
+      );
+
+      const [unpunchedRows] = await pool.query<any[]>(
+        `SELECT 
+           NULL as attendance_record_id,
+           NULL as record_id,
+           e.id,
+           e.id as emp_id,
+           e.id as employee_id,
+           e.emp_code,
+           e.name,
+           e.name as emp_name,
+           d.name as department_name,
+           d.name as dept_name 
+         FROM employees e
+         LEFT JOIN departments d ON e.department_id = d.id
+         WHERE e.status = 'active'
+           AND e.id NOT IN (SELECT emp_id FROM attendance_records WHERE date = ? AND is_archived = 0)
+         ORDER BY e.emp_code ASC`,
+        [today]
+      );
+
+      return res.json({
+        success: true,
+        data: rows,
+        unpunched: unpunchedRows,
+        meta
+      });
+    }
+
+    // 2. Paginated / Chunked Mode
+    const page = Math.max(1, parseInt(pageParam || '1', 10));
+    const limit = Math.max(1, Math.min(100, parseInt(limitParam || '25', 10)));
+
+    // Base query conditions for department and search
+    let filterClause = '';
+    const filterParams: any[] = [today];
+
+    if (deptParam && deptParam !== 'all') {
+      filterClause += ` AND (LOWER(d.name) = LOWER(?) OR LOWER(d.name) LIKE LOWER(?))`;
+      filterParams.push(deptParam, `%${deptParam}%`);
+    }
+
+    if (searchParam) {
+      filterClause += ` AND (e.name LIKE ? OR e.emp_code LIKE ?)`;
+      filterParams.push(`%${searchParam}%`, `%${searchParam}%`);
+    }
+
+    // Tab counts query (accounting for department and search filters)
+    const [tabStats] = await pool.query<any[]>(
+      `SELECT 
+         COUNT(*) as tab_all,
+         COUNT(CASE WHEN ar.punch_in IS NOT NULL THEN 1 END) as tab_present,
+         COUNT(CASE WHEN ar.id IS NULL OR (ar.punch_in IS NULL AND (ar.status IS NULL OR ar.status = 'unpunched')) THEN 1 END) as tab_unpunched,
+         COUNT(CASE WHEN ar.status = 'leave' THEN 1 END) as tab_leave,
+         COUNT(CASE WHEN ar.status = 'absent' THEN 1 END) as tab_absent
+       FROM employees e
+       LEFT JOIN attendance_records ar 
+         ON e.id = ar.emp_id AND ar.date = ? AND ar.is_archived = 0
+       LEFT JOIN departments d 
+         ON e.department_id = d.id
+       WHERE e.status = 'active'${filterClause}`,
+      filterParams
+    );
+
+    const tabCounts = {
+      all: Number(tabStats[0]?.tab_all) || 0,
+      present: Number(tabStats[0]?.tab_present) || 0,
+      unpunched: Number(tabStats[0]?.tab_unpunched) || 0,
+      leave: Number(tabStats[0]?.tab_leave) || 0,
+      absent: Number(tabStats[0]?.tab_absent) || 0
+    };
+
+    // Tab filter clause
+    let tabClause = '';
+    if (tabParam === 'present') {
+      tabClause = ` AND ar.punch_in IS NOT NULL`;
+    } else if (tabParam === 'unpunched') {
+      tabClause = ` AND (ar.id IS NULL OR (ar.punch_in IS NULL AND (ar.status IS NULL OR ar.status = 'unpunched')))`;
+    } else if (tabParam === 'leave') {
+      tabClause = ` AND ar.status = 'leave'`;
+    } else if (tabParam === 'absent') {
+      tabClause = ` AND ar.status = 'absent'`;
+    }
+
+    const totalRecords = tabCounts[tabParam as keyof typeof tabCounts] ?? tabCounts.all;
+    const totalPages = Math.max(1, Math.ceil(totalRecords / limit));
+    const offset = (page - 1) * limit;
+
+    // Fetch chunk of 25 records
+    const chunkParams = [...filterParams, limit, offset];
+    const [chunkRows] = await pool.query<any[]>(
+      `SELECT 
+         ar.*,
+         e.id as emp_id,
+         e.id as employee_id,
+         e.emp_code,
+         e.name,
+         e.name as emp_name,
+         d.name as department_name,
+         d.name as dept_name,
+         ar.id as attendance_record_id,
+         ar.id as record_id,
+         ar.punch_in,
+         ar.punch_out,
+         COALESCE(ar.status, 'unpunched') as status,
+         ar.notes,
+         CASE WHEN ar.id IS NULL OR (ar.punch_in IS NULL AND (ar.status IS NULL OR ar.status = 'unpunched')) THEN 1 ELSE 0 END as is_unpunched
+       FROM employees e
+       LEFT JOIN attendance_records ar 
+         ON e.id = ar.emp_id AND ar.date = ? AND ar.is_archived = 0
+       LEFT JOIN departments d 
+         ON e.department_id = d.id
+       WHERE e.status = 'active'${filterClause}${tabClause}
+       ORDER BY 
+         CASE 
+           WHEN ar.punch_out IS NOT NULL OR ar.punch_in IS NOT NULL THEN 0 
+           WHEN ar.status = 'leave' THEN 1
+           WHEN ar.status = 'absent' THEN 2
+           ELSE 3 
+         END,
+         COALESCE(ar.punch_out, ar.punch_in) DESC,
+         e.emp_code ASC
+       LIMIT ? OFFSET ?`,
+      chunkParams
+    );
+
+    return res.json({
+      success: true,
+      data: chunkRows,
+      pagination: {
+        page,
+        limit,
+        totalRecords,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+        startRecord: totalRecords === 0 ? 0 : offset + 1,
+        endRecord: Math.min(offset + limit, totalRecords)
+      },
+      meta,
+      tabCounts
     });
   } catch (err: any) {
     console.error('Error fetching today attendance:', err);
