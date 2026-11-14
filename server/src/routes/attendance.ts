@@ -293,16 +293,17 @@ router.delete('/record/:id', authorizeRoles('admin', 'hr', 'manager'), async (re
 
 // POST /api/attendance/leave - Grant leave for an employee (Single day or Range)
 router.post('/leave', authorizeRoles('admin', 'hr', 'manager'), async (req: Request, res: Response) => {
-  const { emp_id, emp_code, leave_type = 'casual', from_date, to_date, reason, is_half_day } = req.body;
+  const { emp_id, emp_code, leave_type = 'casual', from_date, to_date, date, reason, is_half_day } = req.body;
   if (!emp_id && !emp_code) {
     return res.status(400).json({ success: false, message: 'emp_id or emp_code is required' });
   }
-  if (!from_date) {
-    return res.status(400).json({ success: false, message: 'from_date is required' });
+
+  const startDate = date || from_date;
+  if (!startDate) {
+    return res.status(400).json({ success: false, message: 'date is required' });
   }
 
-  const startDate = from_date;
-  const endDate = to_date || from_date;
+  const endDate = to_date || startDate;
 
   const validLeaveTypes = ['casual', 'sick', 'earned', 'unpaid', 'maternity', 'other'];
   const sanitizedType = validLeaveTypes.includes(String(leave_type).toLowerCase()) 

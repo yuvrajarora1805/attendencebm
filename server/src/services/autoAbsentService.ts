@@ -92,3 +92,4 @@ export function initAutoAbsentScheduler() {
   // Check every hour
   setInterval(checkAndRun, 60 * 60 * 1000);
 }
+

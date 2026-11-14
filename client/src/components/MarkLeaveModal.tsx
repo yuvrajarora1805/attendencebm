@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, AlertCircle, CheckCircle2, User, FileText, Palmtree } from 'lucide-react';
+import { X, Calendar, AlertCircle, Palmtree } from 'lucide-react';
 import api from '../api/client';
 import { SearchableEmployeeSelect, EmployeeOption } from './SearchableEmployeeSelect';
 
@@ -41,9 +41,7 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
   const [selectedEmpId, setSelectedEmpId] = useState<string>('');
   const [selectedEmp, setSelectedEmp] = useState<EmployeeOption | null>(null);
   const [leaveType, setLeaveType] = useState<string>('casual');
-  const [isRange, setIsRange] = useState<boolean>(false);
-  const [fromDate, setFromDate] = useState<string>(todayStr);
-  const [toDate, setToDate] = useState<string>(todayStr);
+  const [leaveDate, setLeaveDate] = useState<string>(todayStr);
   const [isHalfDay, setIsHalfDay] = useState<boolean>(false);
   const [reason, setReason] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -53,9 +51,7 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
     if (isOpen) {
       setErrorMsg(null);
       setSubmitting(false);
-      setFromDate(defaultDate || new Date().toISOString().split('T')[0]);
-      setToDate(defaultDate || new Date().toISOString().split('T')[0]);
-      setIsRange(false);
+      setLeaveDate(defaultDate || new Date().toISOString().split('T')[0]);
       setIsHalfDay(false);
       setReason('');
       setLeaveType('casual');
@@ -73,18 +69,7 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Calculate day count
-  const calculateDays = () => {
-    if (isHalfDay) return 0.5;
-    if (!isRange) return 1;
-    if (!fromDate || !toDate) return 1;
-    const start = new Date(fromDate);
-    const end = new Date(toDate);
-    const diff = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    return diff > 0 ? diff : 1;
-  };
-
-  const totalDays = calculateDays();
+  const totalDays = isHalfDay ? 0.5 : 1.0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,9 +77,8 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
       setErrorMsg('Please select an employee.');
       return;
     }
-
-    if (isRange && fromDate > toDate) {
-      setErrorMsg('End Date cannot be earlier than Start Date.');
+    if (!leaveDate) {
+      setErrorMsg('Please select the leave date.');
       return;
     }
 
@@ -106,8 +90,9 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
         emp_id: selectedEmp?.id || selectedEmpId,
         emp_code: selectedEmp?.emp_code,
         leave_type: leaveType,
-        from_date: fromDate,
-        to_date: isRange ? toDate : fromDate,
+        date: leaveDate,
+        from_date: leaveDate,
+        to_date: leaveDate,
         is_half_day: isHalfDay,
         reason: reason.trim() || undefined
       };
@@ -142,7 +127,7 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
         background: '#ffffff',
         borderRadius: '16px',
         width: '100%',
-        maxWidth: '560px',
+        maxWidth: '520px',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
         border: '1px solid #e2e8f0',
         overflow: 'hidden',
@@ -173,10 +158,10 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
             </div>
             <div>
               <h2 style={{ fontSize: '17px', fontWeight: 700, margin: 0, color: '#ffffff' }}>
-                Mark Employee Leave
+                Mark Single Day Leave
               </h2>
               <p style={{ fontSize: '12px', margin: 0, opacity: 0.9 }}>
-                Shift Supervisor Leave Grant & Daily Attendance Record
+                Shift Supervisor Single-Day Leave Record
               </p>
             </div>
           </div>
@@ -269,7 +254,7 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
             </div>
           </div>
 
-          {/* Date Duration Option */}
+          {/* Date & Full/Half Day Selection */}
           <div style={{
             background: '#f8fafc',
             border: '1px solid #e2e8f0',
@@ -277,127 +262,78 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
             padding: '14px',
             marginBottom: '16px'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>Duration Option</span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => { setIsRange(false); setIsHalfDay(false); }}
-                  style={{
-                    padding: '4px 10px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    borderRadius: '6px',
-                    border: 'none',
-                    cursor: 'pointer',
-                    background: !isRange && !isHalfDay ? '#0284c7' : '#e2e8f0',
-                    color: !isRange && !isHalfDay ? '#ffffff' : '#64748b'
-                  }}
-                >
-                  Single Day
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setIsRange(true); setIsHalfDay(false); }}
-                  style={{
-                    padding: '4px 10px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    borderRadius: '6px',
-                    border: 'none',
-                    cursor: 'pointer',
-                    background: isRange ? '#0284c7' : '#e2e8f0',
-                    color: isRange ? '#ffffff' : '#64748b'
-                  }}
-                >
-                  Date Range
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setIsHalfDay(true); setIsRange(false); }}
-                  style={{
-                    padding: '4px 10px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    borderRadius: '6px',
-                    border: 'none',
-                    cursor: 'pointer',
-                    background: isHalfDay ? '#0284c7' : '#e2e8f0',
-                    color: isHalfDay ? '#ffffff' : '#64748b'
-                  }}
-                >
-                  Half Day (0.5d)
-                </button>
-              </div>
-            </div>
-
-            {/* Date Inputs */}
-            {!isRange ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: '12px', alignItems: 'end' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>
-                  {isHalfDay ? 'Half Day Leave Date *' : 'Leave Date *'}
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  Leave Date *
                 </label>
                 <input
                   type="date"
                   className="form-input"
-                  value={fromDate}
-                  onChange={e => {
-                    setFromDate(e.target.value);
-                    setToDate(e.target.value);
-                  }}
+                  value={leaveDate}
+                  onChange={e => setLeaveDate(e.target.value)}
                   required
                   style={{ fontSize: '13px' }}
                 />
               </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>From Date *</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={fromDate}
-                    onChange={e => setFromDate(e.target.value)}
-                    required
-                    style={{ fontSize: '13px' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>To Date *</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={toDate}
-                    min={fromDate}
-                    onChange={e => setToDate(e.target.value)}
-                    required
-                    style={{ fontSize: '13px' }}
-                  />
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  Duration
+                </label>
+                <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '8px', padding: '2px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsHalfDay(false)}
+                    style={{
+                      flex: 1,
+                      padding: '6px 4px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: !isHalfDay ? '#0284c7' : 'transparent',
+                      color: !isHalfDay ? '#ffffff' : '#64748b'
+                    }}
+                  >
+                    1 Day
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsHalfDay(true)}
+                    style={{
+                      flex: 1,
+                      padding: '6px 4px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: isHalfDay ? '#0284c7' : 'transparent',
+                      color: isHalfDay ? '#ffffff' : '#64748b'
+                    }}
+                  >
+                    0.5 Day
+                  </button>
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* Total Days Pill */}
+            {/* Total Duration Note */}
             <div style={{
               marginTop: '10px',
-              padding: '8px 12px',
+              padding: '6px 10px',
               background: '#e0f2fe',
-              borderRadius: '8px',
+              borderRadius: '6px',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              fontSize: '12px'
+              fontSize: '11px'
             }}>
-              <span style={{ color: '#0369a1', fontWeight: 600 }}>Total Leave Duration:</span>
-              <span style={{
-                color: '#0284c7',
-                fontWeight: 800,
-                fontSize: '13px',
-                background: '#ffffff',
-                padding: '2px 8px',
-                borderRadius: '6px'
-              }}>
-                {totalDays} Day{totalDays > 1 ? 's' : ''}
+              <span style={{ color: '#0369a1', fontWeight: 600 }}>Selected Shift Date:</span>
+              <span style={{ color: '#0284c7', fontWeight: 800 }}>
+                {leaveDate} ({totalDays} day)
               </span>
             </div>
           </div>
@@ -467,7 +403,7 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
               }}
             >
               <Palmtree size={16} />
-              {submitting ? 'Granting Leave...' : `Grant ${totalDays} Day${totalDays > 1 ? 's' : ''} Leave`}
+              {submitting ? 'Granting Leave...' : `Grant ${totalDays} Day Leave`}
             </button>
           </div>
         </form>
