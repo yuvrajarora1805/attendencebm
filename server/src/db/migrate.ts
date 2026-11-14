@@ -89,6 +89,10 @@ export async function runAutoMigrations(): Promise<void> {
       await pool.query(`ALTER TABLE salary_entries ADD COLUMN allowed_leaves_bonus DECIMAL(10,2) DEFAULT 0.00`);
     } catch (e: any) {}
     try {
+      await pool.query(`ALTER TABLE attendance_records ADD COLUMN notes TEXT NULL`);
+      console.log('✅ Checked/added notes column to attendance_records');
+    } catch (e: any) {}
+    try {
       await pool.query(`ALTER TABLE employees ADD COLUMN monthly_leave_quota DECIMAL(4,1) NOT NULL DEFAULT 2.0`);
       console.log('✅ Added monthly_leave_quota column to employees table');
     } catch (e: any) {}

@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS attendance_records (
   late_minutes INT DEFAULT 0,
   overtime_hours DECIMAL(4,2) DEFAULT 0.00,
   break_minutes INT DEFAULT 0,
+  notes TEXT NULL,
   is_corrected TINYINT(1) DEFAULT 0,
   correction_reason TEXT NULL,
   corrected_by INT NULL,

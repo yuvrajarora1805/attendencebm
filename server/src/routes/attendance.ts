@@ -261,25 +261,14 @@ router.get('/today', async (req: Request, res: Response) => {
 
     const [rows] = await pool.query<any[]>(
       `SELECT 
+         ar.*,
          ar.id as attendance_record_id,
          ar.id as record_id,
-         ar.id,
-         ar.emp_id,
-         ar.date,
-         ar.punch_in,
-         ar.punch_out,
-         ar.status,
-         ar.late_minutes,
-         ar.overtime_hours,
-         ar.notes,
-         ar.is_late,
-         ar.is_corrected,
-         ar.correction_reason,
+         e.id as emp_id,
          e.id as employee_id,
          e.emp_code,
          e.name,
          e.name as emp_name,
-         COALESCE(e.monthly_leave_quota, 2.0) as monthly_leave_quota,
          d.name as department_name,
          d.name as dept_name 
        FROM attendance_records ar
@@ -301,7 +290,6 @@ router.get('/today', async (req: Request, res: Response) => {
          e.emp_code,
          e.name,
          e.name as emp_name,
-         COALESCE(e.monthly_leave_quota, 2.0) as monthly_leave_quota,
          d.name as department_name,
          d.name as dept_name 
        FROM employees e
@@ -340,8 +328,8 @@ router.get('/today', async (req: Request, res: Response) => {
       }
     });
   } catch (err: any) {
-    console.error('Error fetching today attendance:', err?.message || err);
-    return res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Error fetching today attendance:', err);
+    return res.status(500).json({ success: false, message: err?.message || 'Server error' });
   }
 });
 
@@ -584,8 +572,7 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
 
     // 1. Employee Info: Match by emp_code FIRST, then by id
     const [empRows] = await pool.query<any[]>(
-      `SELECT e.id, e.emp_code, e.name, e.phone, e.joining_date as date_of_joining, e.joining_date, e.job_role,
-              COALESCE(e.monthly_leave_quota, 2.0) as monthly_leave_quota,
+      `SELECT e.*, e.joining_date as date_of_joining,
               d.name as department_name, c.name as city_name, jp.name as posting_name
        FROM employees e
        LEFT JOIN departments d ON e.department_id = d.id
