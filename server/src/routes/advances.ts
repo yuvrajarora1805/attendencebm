@@ -183,7 +183,12 @@ router.post('/', authorizeRoles('admin', 'hr', 'payroll_operator'), async (req: 
       return res.status(403).json({ success: false, message: 'Only Admin can approve Extra Advance exceeding the 50% limit.' });
     }
 
-    const finalMonthlyCut = monthly_deduction !== undefined ? (parseFloat(monthly_deduction) || 0) : 0;
+    let finalMonthlyCut = monthly_deduction !== undefined ? (parseFloat(monthly_deduction) || 0) : 0;
+    // An installment cannot be greater than or equal to the advance amount.
+    // E.g. for ₹300 advance, deducting ₹2000/mo is impossible — it fully recovers in the upcoming cycle (0).
+    if (finalMonthlyCut >= numAmount) {
+      finalMonthlyCut = 0;
+    }
 
     const [result]: any = await pool.query(
       `INSERT INTO advance_transactions (emp_id, date, type, amount, remarks, mode, created_by, monthly_deduction, status)
@@ -191,8 +196,8 @@ router.post('/', authorizeRoles('admin', 'hr', 'payroll_operator'), async (req: 
       [emp_id, date, type, numAmount, remarks || null, mode || 'cash', req.user?.id, finalMonthlyCut]
     );
 
-    // If Admin set a monthly salary deduction installment term, save it on employee profile
-    if (isAdmin && monthly_deduction !== undefined && numAmount > 0) {
+    // If Admin set a multi-month monthly salary deduction installment term, save it on employee profile
+    if (isAdmin && finalMonthlyCut > 0 && finalMonthlyCut < numAmount) {
       await pool.query(
         `UPDATE employees SET monthly_advance_deduction = ? WHERE id = ?`,
         [finalMonthlyCut, emp_id]
@@ -516,7 +521,11 @@ router.post('/request', authorizeRoles('admin', 'manager', 'hr'), async (req: Re
       return res.status(404).json({ success: false, message: 'Employee not found' });
     }
     const emp = empRows[0];
-    const finalMonthlyCut = monthly_deduction !== undefined ? (parseFloat(monthly_deduction) || 0) : 0;
+    const numAmt = parseFloat(amount);
+    let finalMonthlyCut = monthly_deduction !== undefined ? (parseFloat(monthly_deduction) || 0) : 0;
+    if (finalMonthlyCut >= numAmt) {
+      finalMonthlyCut = 0;
+    }
 
     const [result]: any = await pool.query(
       `INSERT INTO advance_requests (emp_id, requested_by, amount, reason, mode, monthly_deduction, status)
@@ -748,7 +757,10 @@ router.post('/requests/:id/approve', authorizeRoles('admin'), async (req: Reques
       : Number(reqItem.amount);
     const finalMode = mode || reqItem.mode || 'cash';
     const finalDate = new Date().toISOString().split('T')[0];
-    const deductionInstallment = monthly_deduction !== undefined ? (parseFloat(monthly_deduction) || 0) : Number(reqItem.monthly_deduction || 0);
+    let deductionInstallment = monthly_deduction !== undefined ? (parseFloat(monthly_deduction) || 0) : Number(reqItem.monthly_deduction || 0);
+    if (deductionInstallment >= finalAmount) {
+      deductionInstallment = 0;
+    }
 
     // 1. Create advance transaction
     const [txnRes]: any = await pool.query(
@@ -765,13 +777,13 @@ router.post('/requests/:id/approve', authorizeRoles('admin'), async (req: Reques
       ]
     );
 
-      // 2. Update employee recovery installment terms if specified
-      if (deductionInstallment > 0) {
-        await pool.query(
-          'UPDATE employees SET monthly_advance_deduction = ? WHERE id = ?',
-          [deductionInstallment, reqItem.emp_id]
-        );
-      }
+    // 2. Update employee recovery installment terms if genuine multi-month term
+    if (deductionInstallment > 0 && deductionInstallment < finalAmount) {
+      await pool.query(
+        'UPDATE employees SET monthly_advance_deduction = ? WHERE id = ?',
+        [deductionInstallment, reqItem.emp_id]
+      );
+    }
 
     // 3. Mark request as approved
     await pool.query(

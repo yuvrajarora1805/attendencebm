@@ -172,9 +172,12 @@ export const BatchAdvanceModal: React.FC<BatchAdvanceModalProps> = ({
     const payloadItems = selectedIds.map(id => {
       const emp = employees.find(e => e.id === id);
       const amt = Number(customAmounts[id]) || Number(emp?.max_advance_allowed) || 0;
-      const deductionTerm = customMonthlyDeductions[id] !== undefined
+      let deductionTerm = customMonthlyDeductions[id] !== undefined
         ? (parseFloat(customMonthlyDeductions[id]) || 0)
         : (batchRecoveryType === 'installment' ? (parseFloat(batchMonthlyCut) || 0) : 0);
+      if (deductionTerm >= amt) {
+        deductionTerm = 0;
+      }
       const cutNote = deductionTerm > 0 ? `₹${deductionTerm}/mo installment` : 'Full deduction in upcoming cycle';
 
       const reason = customReasons[id] || (

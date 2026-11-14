@@ -26,7 +26,7 @@ export const GiveAdvanceModal: React.FC<GiveAdvanceModalProps> = ({
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [mode, setMode] = useState<string>('cash');
   const [remarks, setRemarks] = useState<string>('');
-  const [monthlyDeduction, setMonthlyDeduction] = useState<string>('2000');
+  const [monthlyDeduction, setMonthlyDeduction] = useState<string>('');
   const [deductionTermType, setDeductionTermType] = useState<'installment' | 'full'>('full');
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summary, setSummary] = useState<any>(null);
@@ -58,11 +58,11 @@ export const GiveAdvanceModal: React.FC<GiveAdvanceModalProps> = ({
     api.get(`/advances/summary/${selectedEmpId}`)
       .then(res => {
         setSummary(res.data?.data || null);
+        setDeductionTermType('full');
         if (res.data?.data?.monthly_advance_deduction && Number(res.data.data.monthly_advance_deduction) > 0) {
           setMonthlyDeduction(String(res.data.data.monthly_advance_deduction));
-          setDeductionTermType('installment');
         } else {
-          setDeductionTermType('full');
+          setMonthlyDeduction('');
         }
       })
       .catch(err => {
@@ -88,8 +88,16 @@ export const GiveAdvanceModal: React.FC<GiveAdvanceModalProps> = ({
       return;
     }
 
-    const finalMonthlyCut = deductionTermType === 'installment' ? (parseFloat(monthlyDeduction) || 0) : 0;
-    const cutNote = finalMonthlyCut > 0 ? `₹${finalMonthlyCut}/mo installment` : 'Full deduction in upcoming cycle';
+    const enteredAmt = Number(amount) || 0;
+    let finalMonthlyCut = deductionTermType === 'installment' ? (parseFloat(monthlyDeduction) || 0) : 0;
+    
+    // An installment cannot be greater than or equal to the advance amount.
+    // E.g. for ₹300 advance, deducting ₹2000/mo makes no sense — it is recovered fully in 1 upcoming cycle.
+    if (finalMonthlyCut >= enteredAmt) {
+      finalMonthlyCut = 0;
+    }
+
+    const cutNote = finalMonthlyCut > 0 ? `₹${finalMonthlyCut.toLocaleString()}/mo installment` : 'Full deduction in upcoming cycle';
 
     if (!isAdmin) {
       // Manager submitting advance request for Admin authorization
@@ -98,7 +106,7 @@ export const GiveAdvanceModal: React.FC<GiveAdvanceModalProps> = ({
         setError(null);
         const res = await api.post('/advances/request', {
           emp_id: selectedEmpId,
-          amount: Number(amount),
+          amount: enteredAmt,
           mode,
           monthly_deduction: finalMonthlyCut,
           reason: remarks || (isMultiAdvance 
@@ -120,14 +128,12 @@ export const GiveAdvanceModal: React.FC<GiveAdvanceModalProps> = ({
     try {
       setSaving(true);
       setError(null);
-      const finalMonthlyCut = deductionTermType === 'installment' ? (parseFloat(monthlyDeduction) || 0) : 0;
-      const cutNote = finalMonthlyCut > 0 ? `₹${finalMonthlyCut}/mo installment` : 'Full deduction in upcoming cycle';
 
       await api.post('/advances', {
         emp_id: selectedEmpId,
         date,
         type: 'given',
-        amount: Number(amount),
+        amount: enteredAmt,
         mode,
         remarks: remarks || (isMultiAdvance 
           ? `Additional advance disbursement (${mode}) • Salary cut: ${cutNote}` 
@@ -319,10 +325,6 @@ export const GiveAdvanceModal: React.FC<GiveAdvanceModalProps> = ({
                 value={amount}
                 onChange={(e) => {
                   setAmount(e.target.value);
-                  const val = parseFloat(e.target.value) || 0;
-                  if (val > maxAdvance && deductionTermType === 'full') {
-                    setDeductionTermType('installment');
-                  }
                 }}
                 required
               />
@@ -403,7 +405,16 @@ export const GiveAdvanceModal: React.FC<GiveAdvanceModalProps> = ({
                       name="deductionTerm"
                       value="installment"
                       checked={deductionTermType === 'installment'}
-                      onChange={() => setDeductionTermType('installment')}
+                      onChange={() => {
+                        setDeductionTermType('installment');
+                        if (!monthlyDeduction || (enteredAmount > 0 && parseFloat(monthlyDeduction) >= enteredAmount)) {
+                          if (enteredAmount >= 1000) {
+                            setMonthlyDeduction(String(Math.min(2000, Math.round(enteredAmount / 2))));
+                          } else if (enteredAmount > 0) {
+                            setMonthlyDeduction(String(Math.round(enteredAmount / 2)));
+                          }
+                        }
+                      }}
                       style={{ marginTop: '2px' }}
                     />
                     <div>
@@ -427,7 +438,8 @@ export const GiveAdvanceModal: React.FC<GiveAdvanceModalProps> = ({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    gap: '12px'
+                    gap: '12px',
+                    flexWrap: 'wrap'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ fontSize: '12px', fontWeight: 600, color: '#1e40af' }}>Monthly Salary Cut: ₹</span>
@@ -435,20 +447,25 @@ export const GiveAdvanceModal: React.FC<GiveAdvanceModalProps> = ({
                         type="number"
                         step="any"
                         min="1"
+                        max={enteredAmount > 0 ? enteredAmount : undefined}
                         className="form-input"
                         style={{ width: '120px', fontWeight: 700, padding: '4px 8px', height: '32px' }}
                         value={monthlyDeduction}
                         onChange={(e) => setMonthlyDeduction(e.target.value)}
-                        placeholder="2000"
+                        placeholder="e.g. 1000"
                       />
                       <span style={{ fontSize: '11px', color: '#1e40af' }}>/ month</span>
                     </div>
 
-                    {totalCombinedDebt > 0 && parseFloat(monthlyDeduction) > 0 && (
+                    {enteredAmount > 0 && parseFloat(monthlyDeduction) >= enteredAmount ? (
+                      <div style={{ fontSize: '11px', color: '#15803d', fontWeight: 600 }}>
+                        ✓ Full ₹{enteredAmount.toLocaleString()} recovered in next 1 month (Single Cycle)
+                      </div>
+                    ) : totalCombinedDebt > 0 && parseFloat(monthlyDeduction) > 0 ? (
                       <div style={{ fontSize: '11px', color: '#1d4ed8', fontWeight: 600 }}>
                         Recovers ₹{totalCombinedDebt.toLocaleString()} in ~{Math.ceil(totalCombinedDebt / Math.max(1, parseFloat(monthlyDeduction)))} mo.
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </div>
