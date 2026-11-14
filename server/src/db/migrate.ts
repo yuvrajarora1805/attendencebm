@@ -96,6 +96,14 @@ export async function runAutoMigrations(): Promise<void> {
       await pool.query(`ALTER TABLE employees ADD COLUMN monthly_leave_quota DECIMAL(4,1) NOT NULL DEFAULT 2.0`);
       console.log('✅ Added monthly_leave_quota column to employees table');
     } catch (e: any) {}
+    try {
+      await pool.query(`ALTER TABLE departments ADD COLUMN code_start INT NULL`);
+      console.log('✅ Checked/added code_start column to departments table');
+    } catch (e: any) {}
+    try {
+      await pool.query(`ALTER TABLE departments ADD COLUMN code_end INT NULL`);
+      console.log('✅ Checked/added code_end column to departments table');
+    } catch (e: any) {}
 
     // 5. Create advance_requests table for Manager request & Admin approval workflow
     try {

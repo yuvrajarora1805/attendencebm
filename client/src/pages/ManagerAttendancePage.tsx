@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Clock, Calendar, UserCheck, CheckCircle2, AlertTriangle, 
   Search, ShieldAlert, ArrowRightCircle, Sparkles, RefreshCw, Send, DollarSign,
@@ -76,7 +76,9 @@ export const ManagerAttendancePage: React.FC = () => {
       if (!isBackground) setLoading(true);
       const [todayRes, deptRes, empRes] = await Promise.all([
         api.get(`/attendance/today?date=${selectedDate}`).catch(() => ({ data: { data: [], unpunched: [], meta: {} } })),
-        api.get('/employees/series-info').catch(() => ({ data: { data: [] } })),
+        api.get('/employees/series-info')
+          .catch(() => api.get('/employees/meta/departments'))
+          .catch(() => ({ data: { data: [] } })),
         api.get('/employees?status=active').catch(() => ({ data: { data: [] } }))
       ]);
 
@@ -272,14 +274,88 @@ export const ManagerAttendancePage: React.FC = () => {
     window.scrollTo({ top: 120, behavior: 'smooth' });
   };
 
+  // Dynamically compute available departments list (merging API with live employee roster fallback)
+  const departmentOptions = useMemo(() => {
+    const deptMap = new Map<string, { id?: any; name: string; series?: string; count: number }>();
+
+    // 1. Add departments returned by API (series-info or meta/departments)
+    if (Array.isArray(departments)) {
+      departments.forEach((d: any) => {
+        const name = String(d.dept_name || d.name || '').trim();
+        if (!name) return;
+        deptMap.set(name.toLowerCase(), {
+          id: d.dept_id || d.id,
+          name: name,
+          series: d.series_prefix || '',
+          count: Number(d.emp_count) || 0
+        });
+      });
+    }
+
+    // 2. Discover departments directly from loaded active records, unpunched employees, and active employees
+    const allRosterItems = [...records, ...unpunchedEmployees, ...allEmployees];
+    allRosterItems.forEach((item: any) => {
+      const name = String(item.department_name || item.dept_name || '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (!deptMap.has(key)) {
+        deptMap.set(key, {
+          name: name,
+          count: 0
+        });
+      }
+    });
+
+    // 3. Compute live count of active employees in today's roster for each department
+    const currentRoster = [...records, ...unpunchedEmployees.map(u => ({ ...u, is_unpunched: true }))];
+    const deptRosterCounts = new Map<string, number>();
+    currentRoster.forEach(r => {
+      const name = String(r.department_name || r.dept_name || '').trim().toLowerCase();
+      if (name) {
+        deptRosterCounts.set(name, (deptRosterCounts.get(name) || 0) + 1);
+      }
+    });
+
+    return Array.from(deptMap.values())
+      .map(dept => {
+        const key = dept.name.toLowerCase();
+        const rosterCount = deptRosterCounts.get(key) ?? dept.count;
+        return {
+          ...dept,
+          count: rosterCount
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [departments, records, unpunchedEmployees, allEmployees]);
+
+  // Department-aware tab counts
+  const tabCounts = useMemo(() => {
+    const filterDept = (item: any) => {
+      if (selectedDept === 'all') return true;
+      const dept = String(item.department_name || item.dept_name || '').trim().toLowerCase();
+      return dept === selectedDept.trim().toLowerCase();
+    };
+
+    const deptRecords = records.filter(filterDept);
+    const deptUnpunched = unpunchedEmployees.filter(filterDept);
+
+    const present = deptRecords.filter(r => r.punch_in != null).length;
+    const unpunched = deptUnpunched.length;
+    const leave = deptRecords.filter(r => r.status === 'leave').length;
+    const absent = deptRecords.filter(r => r.status === 'absent').length;
+    const all = deptRecords.length + deptUnpunched.length;
+
+    return { all, present, unpunched, leave, absent };
+  }, [records, unpunchedEmployees, selectedDept]);
+
   // Filter combined records
   // Build unified roster based on activeTab
   let displayList: any[] = [];
 
   const normalizedSearch = search.trim().toLowerCase();
   const filterByDeptAndSearch = (item: any) => {
-    const dept = String(item.department_name || item.dept_name || '').toLowerCase();
-    const matchesDept = selectedDept === 'all' || dept === selectedDept.toLowerCase();
+    const dept = String(item.department_name || item.dept_name || '').trim().toLowerCase();
+    const matchesDept = selectedDept === 'all' || dept === selectedDept.trim().toLowerCase();
     const matchesSearch = !normalizedSearch || 
       String(item.name || '').toLowerCase().includes(normalizedSearch) ||
       String(item.emp_code || '').toLowerCase().includes(normalizedSearch);
@@ -748,7 +824,7 @@ export const ManagerAttendancePage: React.FC = () => {
                 color: activeTab === 'all' ? '#ffffff' : '#475569'
               }}
             >
-              All Staff ({records.length + unpunchedEmployees.length})
+              All Staff ({tabCounts.all})
             </button>
             <button
               onClick={() => setActiveTab('present')}
@@ -758,7 +834,7 @@ export const ManagerAttendancePage: React.FC = () => {
                 color: activeTab === 'present' ? '#ffffff' : '#15803d'
               }}
             >
-              🟢 Present ({meta.punched_count || 0})
+              🟢 Present ({tabCounts.present})
             </button>
             <button
               onClick={() => setActiveTab('unpunched')}
@@ -768,7 +844,7 @@ export const ManagerAttendancePage: React.FC = () => {
                 color: activeTab === 'unpunched' ? '#ffffff' : '#b45309'
               }}
             >
-              ⏳ Unpunched ({unpunchedCount})
+              ⏳ Unpunched ({tabCounts.unpunched})
             </button>
             <button
               onClick={() => setActiveTab('leave')}
@@ -778,7 +854,7 @@ export const ManagerAttendancePage: React.FC = () => {
                 color: activeTab === 'leave' ? '#ffffff' : '#0284c7'
               }}
             >
-              🌴 On Leave ({meta.leave_count || 0})
+              🌴 On Leave ({tabCounts.leave})
             </button>
             <button
               onClick={() => setActiveTab('absent')}
@@ -788,7 +864,7 @@ export const ManagerAttendancePage: React.FC = () => {
                 color: activeTab === 'absent' ? '#ffffff' : '#dc2626'
               }}
             >
-              🔴 Absent ({meta.absent_count || 0})
+              🔴 Absent ({tabCounts.absent})
             </button>
           </div>
 
@@ -807,19 +883,34 @@ export const ManagerAttendancePage: React.FC = () => {
                 />
               </div>
 
-              <select
-                className="form-input"
-                value={selectedDept}
-                onChange={e => setSelectedDept(e.target.value)}
-                style={{ width: '180px', fontSize: '12px' }}
-              >
-                <option value="all">🏢 All Departments ({departments.length})</option>
-                {departments.map(d => (
-                  <option key={d.dept_id} value={d.dept_name}>
-                    {d.dept_name} ({d.series_prefix})
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <select
+                  className="form-input"
+                  value={selectedDept}
+                  onChange={e => setSelectedDept(e.target.value)}
+                  style={{ minWidth: '220px', fontSize: '12px' }}
+                >
+                  <option value="all">
+                    🏢 All Departments ({departmentOptions.length > 0 ? departmentOptions.length : 0})
                   </option>
-                ))}
-              </select>
+                  {departmentOptions.map(d => (
+                    <option key={d.name} value={d.name}>
+                      {d.name} {d.series ? `(${d.series})` : (d.count ? `(${d.count})` : '')}
+                    </option>
+                  ))}
+                </select>
+
+                {selectedDept !== 'all' && (
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setSelectedDept('all')}
+                    title="Clear Department Filter"
+                    style={{ padding: '6px 9px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer' }}
+                  >
+                    ✕ Clear
+                  </button>
+                )}
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

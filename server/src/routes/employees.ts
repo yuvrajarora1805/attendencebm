@@ -137,13 +137,27 @@ router.delete('/departments/:id', authorizeRoles('admin', 'hr'), async (req: Req
 // GET /api/employees/series-info - Get allocated code series with configured start-end range
 router.get('/series-info', async (req: Request, res: Response) => {
   try {
-    const [departments] = await pool.query<any[]>(
-      `SELECT d.id, d.name, d.description, d.code_start, d.code_end, COUNT(e.id) as emp_count
-       FROM departments d
-       LEFT JOIN employees e ON d.id = e.department_id
-       GROUP BY d.id, d.name
-       ORDER BY d.name ASC`
-    );
+    let departments: any[] = [];
+    try {
+      const [rows] = await pool.query<any[]>(
+        `SELECT d.id, d.name, d.description, d.code_start, d.code_end, COUNT(e.id) as emp_count
+         FROM departments d
+         LEFT JOIN employees e ON d.id = e.department_id
+         GROUP BY d.id, d.name, d.description, d.code_start, d.code_end
+         ORDER BY d.name ASC`
+      );
+      departments = rows;
+    } catch (queryErr: any) {
+      console.warn('Fallback querying departments in series-info:', queryErr?.message || queryErr);
+      const [rows] = await pool.query<any[]>(
+        `SELECT d.id, d.name, d.description, NULL as code_start, NULL as code_end, COUNT(e.id) as emp_count
+         FROM departments d
+         LEFT JOIN employees e ON d.id = e.department_id
+         GROUP BY d.id, d.name, d.description
+         ORDER BY d.name ASC`
+      );
+      departments = rows;
+    }
 
     const [allEmployees] = await pool.query<any[]>(
       `SELECT department_id, emp_code FROM employees WHERE department_id IS NOT NULL`
@@ -193,6 +207,8 @@ router.get('/series-info', async (req: Request, res: Response) => {
       }
 
       return {
+        id: dept.id,
+        name: dept.name,
         dept_id: dept.id,
         dept_name: dept.name,
         code_start: dept.code_start,
@@ -204,9 +220,10 @@ router.get('/series-info', async (req: Request, res: Response) => {
       };
     });
 
-    res.json({ success: true, data: seriesData });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    return res.json({ success: true, data: seriesData });
+  } catch (err: any) {
+    console.error('Error in /employees/series-info:', err?.message || err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
