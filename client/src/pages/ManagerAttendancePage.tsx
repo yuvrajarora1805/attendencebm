@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { 
   Clock, Calendar, UserCheck, CheckCircle2, AlertTriangle, 
   Search, ShieldAlert, ArrowRightCircle, Sparkles, RefreshCw, Send, DollarSign,
-  Palmtree, UserX, AlertCircle, RotateCcw
+  Palmtree, UserX, AlertCircle, RotateCcw, FileText, Printer
 } from 'lucide-react';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import BatchAdvanceModal from '../components/BatchAdvanceModal';
 import MarkLeaveModal from '../components/MarkLeaveModal';
+import LeaveSlipPDF from '../components/LeaveSlipPDF';
 
 export const ManagerAttendancePage: React.FC = () => {
   const { user } = useAuth();
@@ -35,6 +36,11 @@ export const ManagerAttendancePage: React.FC = () => {
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [leavePreSelectedEmpId, setLeavePreSelectedEmpId] = useState<string | number | null>(null);
   const [allEmployees, setAllEmployees] = useState<any[]>([]);
+
+  // Leave Slip PDF Modal state
+  const [leaveSlipModalOpen, setLeaveSlipModalOpen] = useState(false);
+  const [leaveSlipEmpId, setLeaveSlipEmpId] = useState<string | number | null>(null);
+  const [leaveSlipDate, setLeaveSlipDate] = useState<string>('');
 
   // Auto-absent action state
   const [autoAbsentLoading, setAutoAbsentLoading] = useState(false);
@@ -874,18 +880,38 @@ export const ManagerAttendancePage: React.FC = () => {
                               </button>
                             </div>
                           ) : (isLeave || isAbsent) ? (
-                            <button
-                              type="button"
-                              onClick={() => handleResetRecord(r.id, r.name || r.emp_name)}
-                              style={{
-                                padding: '3px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '5px',
-                                background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', cursor: 'pointer',
-                                display: 'inline-flex', alignItems: 'center', gap: '3px'
-                              }}
-                              title="Reset/Undo attendance record so employee can punch in"
-                            >
-                              <RotateCcw size={11} /> Reset Status
-                            </button>
+                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                              {isLeave && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setLeaveSlipEmpId(r.emp_id || r.id);
+                                    setLeaveSlipDate(r.date || selectedDate);
+                                    setLeaveSlipModalOpen(true);
+                                  }}
+                                  style={{
+                                    padding: '3px 8px', fontSize: '11px', fontWeight: 700, borderRadius: '5px',
+                                    background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer',
+                                    display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                  }}
+                                  title="Print / View Leave Slip for Section Head"
+                                >
+                                  <FileText size={11} /> 📄 Slip
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleResetRecord(r.id, r.name || r.emp_name)}
+                                style={{
+                                  padding: '3px 7px', fontSize: '11px', fontWeight: 600, borderRadius: '5px',
+                                  background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', cursor: 'pointer',
+                                  display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                }}
+                                title="Reset/Undo attendance record so employee can punch in"
+                              >
+                                <RotateCcw size={11} /> Reset
+                              </button>
+                            </div>
                           ) : isPresent && !r.punch_out ? (
                             <button
                               type="button"
@@ -930,14 +956,30 @@ export const ManagerAttendancePage: React.FC = () => {
           setLeaveModalOpen(false);
           setLeavePreSelectedEmpId(null);
         }}
-        onSuccess={(msg) => {
+        onSuccess={(msg, slipMeta) => {
           setBannerAlert({ type: 'success', message: msg || 'Leave successfully recorded.' });
           loadData();
+          if (slipMeta?.emp_id) {
+            setLeaveSlipEmpId(slipMeta.emp_id);
+            setLeaveSlipDate(slipMeta.date);
+            setLeaveSlipModalOpen(true);
+          }
           setTimeout(() => setBannerAlert(null), 6000);
         }}
         employees={allEmployees}
         preSelectedEmpId={leavePreSelectedEmpId}
         defaultDate={selectedDate}
+      />
+
+      {/* Leave Application & Sanction Slip PDF Modal */}
+      <LeaveSlipPDF
+        isOpen={leaveSlipModalOpen}
+        onClose={() => {
+          setLeaveSlipModalOpen(false);
+          setLeaveSlipEmpId(null);
+        }}
+        empId={leaveSlipEmpId}
+        leaveDate={leaveSlipDate || selectedDate}
       />
     </div>
   );

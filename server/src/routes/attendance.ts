@@ -463,6 +463,7 @@ router.post('/leave', authorizeRoles('admin', 'hr', 'manager'), async (req: Requ
     return res.json({
       success: true,
       message: `Leave successfully recorded for ${emp.name} (${totalDays} day${totalDays > 1 ? 's' : ''})`,
+      leave_id: leaveRes.insertId,
       data: {
         emp_id: emp.id,
         emp_code: emp.emp_code,
@@ -470,12 +471,202 @@ router.post('/leave', authorizeRoles('admin', 'hr', 'manager'), async (req: Requ
         leave_type: sanitizedType,
         from_date: startDate,
         to_date: endDate,
-        total_days: totalDays
+        date: startDate,
+        total_days: totalDays,
+        reason: reason || null,
+        created_at: new Date()
       }
     });
   } catch (err: any) {
     console.error('Error marking leave:', err);
     return res.status(500).json({ success: false, message: 'Server error while marking leave' });
+  }
+});
+
+// GET /api/attendance/leave-slip/:empId - Fetch complete data for Leave Application & Sanction Slip PDF
+router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const { empId } = req.params;
+    const targetDate = (req.query.date as string) || new Date().toISOString().split('T')[0];
+
+    // 1. Employee Info
+    const [empRows] = await pool.query<any[]>(
+      `SELECT e.id, e.emp_code, e.name, e.phone, e.date_of_joining, e.job_role,
+              d.name as department_name, c.name as city_name, jp.name as posting_name
+       FROM employees e
+       LEFT JOIN departments d ON e.department_id = d.id
+       LEFT JOIN cities c ON e.city_id = c.id
+       LEFT JOIN job_postings jp ON e.posting_id = jp.id
+       WHERE (e.id = ? OR e.emp_code = ?) LIMIT 1`,
+      [empId, empId]
+    );
+
+    if (!empRows.length) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+    const emp = empRows[0];
+
+    // 2. Leave Info for targetDate
+    const [leaveRows] = await pool.query<any[]>(
+      `SELECT lr.*, u.username as approver_username, u.full_name as approver_name
+       FROM leave_records lr
+       LEFT JOIN users u ON lr.approved_by = u.id
+       WHERE lr.emp_id = ? AND (? BETWEEN lr.from_date AND lr.to_date)
+       ORDER BY lr.id DESC LIMIT 1`,
+      [emp.id, targetDate]
+    );
+
+    // Fallback: check attendance_records if leave was marked directly
+    const [attRows] = await pool.query<any[]>(
+      `SELECT ar.*, u.username as punched_by_user
+       FROM attendance_records ar
+       LEFT JOIN users u ON ar.punched_by = u.id
+       WHERE ar.emp_id = ? AND ar.date = ? LIMIT 1`,
+      [emp.id, targetDate]
+    );
+
+    const leaveRecord = leaveRows[0] || null;
+    const attRecord = attRows[0] || null;
+
+    // 3. Past 6 Months Trend (From salary_entries with fallback)
+    const [trendRows] = await pool.query<any[]>(
+      `SELECT 
+        sp.year as yr, 
+        sp.month as mo, 
+        se.working_days,
+        se.present_days,
+        se.actual_leaves,
+        se.final_leaves as absent_days
+       FROM salary_entries se
+       JOIN salary_periods sp ON se.period_id = sp.id
+       WHERE se.emp_id = ?
+       ORDER BY sp.year DESC, sp.month DESC
+       LIMIT 6`,
+      [emp.id]
+    );
+
+    const past6Months = (trendRows || []).reverse().map((t: any) => {
+      const working = Number(t.working_days) || 30;
+      const present = Number(t.present_days) || 0;
+      const absent = Number(t.absent_days) || 0;
+      const actual = Number(t.actual_leaves) || 0;
+      const leaves = Math.max(0, actual - absent);
+      const rate = working > 0 ? Math.round((present / working) * 100) : 0;
+      return {
+        year: t.yr,
+        month: t.mo,
+        working_days: working,
+        present_days: present,
+        leave_days: leaves,
+        absent_days: absent,
+        rate
+      };
+    });
+
+    // 4. Last Month Audit
+    const now = new Date(targetDate);
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonth = prevDate.getMonth() + 1;
+    const lastMonthYear = prevDate.getFullYear();
+
+    const [lastMonthSal] = await pool.query<any[]>(
+      `SELECT se.* FROM salary_entries se
+       JOIN salary_periods sp ON se.period_id = sp.id
+       WHERE se.emp_id = ? AND sp.month = ? AND sp.year = ? LIMIT 1`,
+      [emp.id, lastMonth, lastMonthYear]
+    );
+
+    let lastMonthStats: any = null;
+    if (lastMonthSal.length) {
+      const s = lastMonthSal[0];
+      const working = Number(s.working_days) || 30;
+      const present = Number(s.present_days) || 0;
+      const absent = Number(s.final_leaves) || 0;
+      const actualLeaves = Number(s.actual_leaves) || 0;
+      const leaves = Math.max(0, actualLeaves - absent);
+      lastMonthStats = {
+        month: lastMonth,
+        year: lastMonthYear,
+        working_days: working,
+        present_days: present,
+        leaves_taken: leaves,
+        absent_days: absent,
+        allowed_leaves: Math.max(0, actualLeaves - absent),
+        deductible_leaves: absent,
+        presence_rate: working > 0 ? Math.round((present / working) * 100) : 0
+      };
+    } else {
+      const [lastAtt] = await pool.query<any[]>(
+        `SELECT 
+           COUNT(*) as total,
+           COALESCE(SUM(CASE WHEN status IN ('present', 'late') THEN 1 WHEN status='half_day' THEN 0.5 ELSE 0 END), 0) as present_days,
+           COALESCE(SUM(CASE WHEN status='absent' THEN 1 ELSE 0 END), 0) as absent_days,
+           COALESCE(SUM(CASE WHEN status='leave' THEN 1 ELSE 0 END), 0) as leave_days
+         FROM attendance_records
+         WHERE emp_id = ? AND MONTH(date) = ? AND YEAR(date) = ? AND is_archived = 0`,
+        [emp.id, lastMonth, lastMonthYear]
+      );
+      const l = lastAtt[0] || {};
+      lastMonthStats = {
+        month: lastMonth,
+        year: lastMonthYear,
+        working_days: 30,
+        present_days: Number(l.present_days || 0),
+        leaves_taken: Number(l.leave_days || 0),
+        absent_days: Number(l.absent_days || 0),
+        allowed_leaves: 0,
+        deductible_leaves: Number(l.absent_days || 0),
+        presence_rate: Math.round(((Number(l.present_days || 0)) / 30) * 100)
+      };
+    }
+
+    // 5. Current Month In-Progress Stats
+    const curMonth = now.getMonth() + 1;
+    const curYear = now.getFullYear();
+    const [curAtt] = await pool.query<any[]>(
+      `SELECT 
+         COUNT(*) as total,
+         COALESCE(SUM(CASE WHEN status IN ('present', 'late') THEN 1 WHEN status='half_day' THEN 0.5 ELSE 0 END), 0) as present_days,
+         COALESCE(SUM(CASE WHEN status='absent' THEN 1 ELSE 0 END), 0) as absent_days,
+         COALESCE(SUM(CASE WHEN status='leave' THEN 1 ELSE 0 END), 0) as leave_days
+       FROM attendance_records
+       WHERE emp_id = ? AND MONTH(date) = ? AND YEAR(date) = ? AND is_archived = 0`,
+      [emp.id, curMonth, curYear]
+    );
+    const c = curAtt[0] || {};
+
+    const applicationNo = `LV-${targetDate.replace(/-/g, '')}-${emp.emp_code}`;
+
+    return res.json({
+      success: true,
+      data: {
+        application_no: applicationNo,
+        generated_at: new Date(),
+        generated_by: req.user!.username,
+        employee: emp,
+        leave: {
+          date: targetDate,
+          leave_type: leaveRecord?.leave_type || (attRecord?.notes?.match(/\[Leave: ([^\]]+)\]/)?.[1] || 'casual'),
+          total_days: Number(leaveRecord?.total_days || (attRecord?.status === 'half_day' ? 0.5 : 1.0)),
+          reason: leaveRecord?.reason || attRecord?.notes || 'Supervisor approved leave',
+          status: leaveRecord?.status || 'approved',
+          approved_by_name: leaveRecord?.approver_name || req.user!.username,
+          approved_at: leaveRecord?.approved_at || new Date()
+        },
+        past_6_months: past6Months,
+        last_month: lastMonthStats,
+        current_month: {
+          month: curMonth,
+          year: curYear,
+          present_days: Number(c.present_days || 0),
+          leave_days: Number(c.leave_days || 0),
+          absent_days: Number(c.absent_days || 0)
+        }
+      }
+    });
+  } catch (err: any) {
+    console.error('Error fetching leave slip data:', err);
+    return res.status(500).json({ success: false, message: 'Server error fetching leave slip data' });
   }
 });
 

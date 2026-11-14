@@ -6,7 +6,7 @@ import { SearchableEmployeeSelect, EmployeeOption } from './SearchableEmployeeSe
 interface MarkLeaveModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (message?: string) => void;
+  onSuccess: (message?: string, slipMeta?: { emp_id: string | number; date: string }) => void;
   employees: EmployeeOption[];
   preSelectedEmpId?: string | number | null;
   defaultDate?: string;
@@ -98,7 +98,10 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
       };
 
       const res = await api.post('/attendance/leave', payload);
-      onSuccess(res.data?.message || `Leave successfully recorded for ${selectedEmp?.name || 'employee'}`);
+      onSuccess(res.data?.message || `Leave successfully recorded for ${selectedEmp?.name || 'employee'}`, {
+        emp_id: selectedEmp?.id || selectedEmpId,
+        date: leaveDate
+      });
       onClose();
     } catch (err: any) {
       console.error('Failed to submit leave:', err);
