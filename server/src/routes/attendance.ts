@@ -630,18 +630,24 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
 
     let past6Months = (trendRows || []).reverse().map((t: any) => {
       const working = Number(t.working_days) || 30;
-      const present = Number(t.present_days) || 0;
+      const rawPresent = Number(t.present_days) || 0;
       const absent = Number(t.absent_days) || 0;
       const actual = Number(t.actual_leaves) || 0;
-      const leaves = Math.max(0, actual - absent);
-      const rate = working > 0 ? Math.round((present / working) * 100) : 0;
+
+      // Reconcile: If employee was present full working days, no leaves were taken
+      const maxMissed = Math.max(0, working - rawPresent);
+      const rawLeaves = Math.max(0, actual - absent);
+      const leaves = Math.min(rawLeaves, maxMissed);
+      const effectiveAbsent = Math.min(absent, Math.max(0, maxMissed - leaves));
+      const present = Math.min(working, rawPresent);
+      const rate = working > 0 ? Math.min(100, Math.round((present / working) * 100)) : 0;
       return {
         year: t.yr,
         month: t.mo,
         working_days: working,
         present_days: present,
         leave_days: leaves,
-        absent_days: absent,
+        absent_days: effectiveAbsent,
         rate
       };
     });
@@ -702,20 +708,29 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
     if (lastMonthSal.length) {
       const s = lastMonthSal[0];
       const working = Number(s.working_days) || 30;
-      const present = Number(s.present_days) || 0;
+      const rawPresent = Number(s.present_days) || 0;
       const absent = Number(s.final_leaves) || 0;
       const actualLeaves = Number(s.actual_leaves) || 0;
-      const leaves = Math.max(0, actualLeaves - absent);
+
+      // Reconcile: If employee was present full working days, no leaves were taken
+      const maxMissed = Math.max(0, working - rawPresent);
+      const rawLeaves = Math.max(0, actualLeaves - absent);
+      const leaves = Math.min(rawLeaves, maxMissed);
+      const effectiveAbsent = Math.min(absent, Math.max(0, maxMissed - leaves));
+      const present = Math.min(working, rawPresent);
+      const allowedLeaves = Math.min(quotaAllowed, leaves);
+      const deductible = Math.max(0, (leaves + effectiveAbsent) - allowedLeaves);
+
       lastMonthStats = {
         month: lastMonth,
         year: lastMonthYear,
         working_days: working,
         present_days: present,
         leaves_taken: leaves,
-        absent_days: absent,
-        allowed_leaves: Math.max(0, actualLeaves - absent),
-        deductible_leaves: absent,
-        presence_rate: working > 0 ? Math.round((present / working) * 100) : 0
+        absent_days: effectiveAbsent,
+        allowed_leaves: allowedLeaves,
+        deductible_leaves: deductible,
+        presence_rate: working > 0 ? Math.min(100, Math.round((present / working) * 100)) : 0
       };
     } else {
       const [lastAtt] = await pool.query<any[]>(
