@@ -144,7 +144,17 @@ export const AttendancePage: React.FC = () => {
         if (row.status === 'present') cls = 'badge-success';
         if (row.status === 'late') cls = 'badge-warning';
         if (row.status === 'absent') cls = 'badge-danger';
-        return <span className={`badge ${cls}`}>{row.status}</span>;
+        if (row.status === 'leave') cls = 'badge-info';
+        return (
+          <div>
+            <span className={`badge ${cls}`}>{row.status}</span>
+            {row.notes && (row.status === 'leave' || row.status === 'absent') && (
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                {row.notes}
+              </div>
+            )}
+          </div>
+        );
       }
     },
     {
