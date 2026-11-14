@@ -260,7 +260,28 @@ router.get('/today', async (req: Request, res: Response) => {
     const today = queryDate || new Date().toISOString().split('T')[0];
 
     const [rows] = await pool.query<any[]>(
-      `SELECT ar.*, e.name, e.name as emp_name, e.emp_code, d.name as department_name, d.name as dept_name 
+      `SELECT 
+         ar.id as attendance_record_id,
+         ar.id as record_id,
+         ar.id,
+         ar.emp_id,
+         ar.date,
+         ar.punch_in,
+         ar.punch_out,
+         ar.status,
+         ar.late_minutes,
+         ar.overtime_hours,
+         ar.notes,
+         ar.is_late,
+         ar.is_corrected,
+         ar.correction_reason,
+         e.id as employee_id,
+         e.emp_code,
+         e.name,
+         e.name as emp_name,
+         COALESCE(e.monthly_leave_quota, 2.0) as monthly_leave_quota,
+         d.name as department_name,
+         d.name as dept_name 
        FROM attendance_records ar
        JOIN employees e ON ar.emp_id = e.id 
        LEFT JOIN departments d ON e.department_id = d.id
@@ -271,7 +292,18 @@ router.get('/today', async (req: Request, res: Response) => {
 
     // Get unpunched active employees for today
     const [unpunchedRows] = await pool.query<any[]>(
-      `SELECT e.id, e.name, e.name as emp_name, e.emp_code, d.name as department_name, d.name as dept_name 
+      `SELECT 
+         NULL as attendance_record_id,
+         NULL as record_id,
+         e.id,
+         e.id as emp_id,
+         e.id as employee_id,
+         e.emp_code,
+         e.name,
+         e.name as emp_name,
+         COALESCE(e.monthly_leave_quota, 2.0) as monthly_leave_quota,
+         d.name as department_name,
+         d.name as dept_name 
        FROM employees e
        LEFT JOIN departments d ON e.department_id = d.id
        WHERE e.status = 'active'
@@ -550,16 +582,19 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
     const { empId } = req.params;
     const targetDate = (req.query.date as string) || new Date().toISOString().split('T')[0];
 
-    // 1. Employee Info
+    // 1. Employee Info: Match by emp_code FIRST, then by id
     const [empRows] = await pool.query<any[]>(
-      `SELECT e.id, e.emp_code, e.name, e.phone, e.date_of_joining, e.job_role,
+      `SELECT e.id, e.emp_code, e.name, e.phone, e.joining_date as date_of_joining, e.joining_date, e.job_role,
+              COALESCE(e.monthly_leave_quota, 2.0) as monthly_leave_quota,
               d.name as department_name, c.name as city_name, jp.name as posting_name
        FROM employees e
        LEFT JOIN departments d ON e.department_id = d.id
        LEFT JOIN cities c ON e.city_id = c.id
        LEFT JOIN job_postings jp ON e.posting_id = jp.id
-       WHERE (e.id = ? OR e.emp_code = ?) LIMIT 1`,
-      [empId, empId]
+       WHERE (e.emp_code = ? OR e.id = ?)
+       ORDER BY (e.emp_code = ?) DESC
+       LIMIT 1`,
+      [empId, empId, empId]
     );
 
     if (!empRows.length) {
@@ -589,7 +624,7 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
     const leaveRecord = leaveRows[0] || null;
     const attRecord = attRows[0] || null;
 
-    // 3. Past 6 Months Trend (From salary_entries with fallback)
+    // 3. Past 6 Months Trend (From salary_entries with fallback to attendance_records)
     const [trendRows] = await pool.query<any[]>(
       `SELECT 
         sp.year as yr, 
@@ -606,7 +641,7 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
       [emp.id]
     );
 
-    const past6Months = (trendRows || []).reverse().map((t: any) => {
+    let past6Months = (trendRows || []).reverse().map((t: any) => {
       const working = Number(t.working_days) || 30;
       const present = Number(t.present_days) || 0;
       const absent = Number(t.absent_days) || 0;
@@ -624,11 +659,50 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
       };
     });
 
+    // Fallback: If salary_entries has no prior records for this employee, aggregate from attendance_records
+    if (past6Months.length === 0) {
+      const [attTrends] = await pool.query<any[]>(
+        `SELECT 
+          YEAR(date) as yr, 
+          MONTH(date) as mo, 
+          COUNT(DISTINCT date) as recorded_days,
+          COALESCE(SUM(CASE WHEN status IN ('present', 'late') THEN 1 WHEN status='half_day' THEN 0.5 ELSE 0 END), 0) as present_days,
+          COALESCE(SUM(CASE WHEN status='leave' THEN 1 ELSE 0 END), 0) as leave_days,
+          COALESCE(SUM(CASE WHEN status='absent' THEN 1 ELSE 0 END), 0) as absent_days
+         FROM attendance_records
+         WHERE emp_id = ? AND is_archived = 0
+         GROUP BY YEAR(date), MONTH(date)
+         ORDER BY yr DESC, mo DESC
+         LIMIT 6`,
+        [emp.id]
+      );
+
+      if (attTrends.length > 0) {
+        past6Months = (attTrends || []).reverse().map((t: any) => {
+          const working = 26;
+          const present = Number(t.present_days) || 0;
+          const leaves = Number(t.leave_days) || 0;
+          const absent = Number(t.absent_days) || 0;
+          const rate = working > 0 ? Math.min(100, Math.round((present / working) * 100)) : 0;
+          return {
+            year: t.yr,
+            month: t.mo,
+            working_days: working,
+            present_days: present,
+            leave_days: leaves,
+            absent_days: absent,
+            rate
+          };
+        });
+      }
+    }
+
     // 4. Last Month Audit
     const now = new Date(targetDate);
     const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonth = prevDate.getMonth() + 1;
     const lastMonthYear = prevDate.getFullYear();
+    const quotaAllowed = Number(emp.monthly_leave_quota || 2.0);
 
     const [lastMonthSal] = await pool.query<any[]>(
       `SELECT se.* FROM salary_entries se
@@ -668,16 +742,22 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
         [emp.id, lastMonth, lastMonthYear]
       );
       const l = lastAtt[0] || {};
+      const presentCount = Number(l.present_days || 0);
+      const leavesCount = Number(l.leave_days || 0);
+      const absentCount = Number(l.absent_days || 0);
+      const allowedCredit = Math.min(quotaAllowed, leavesCount);
+      const deductible = Math.max(0, (leavesCount + absentCount) - allowedCredit);
+
       lastMonthStats = {
         month: lastMonth,
         year: lastMonthYear,
-        working_days: 30,
-        present_days: Number(l.present_days || 0),
-        leaves_taken: Number(l.leave_days || 0),
-        absent_days: Number(l.absent_days || 0),
-        allowed_leaves: 0,
-        deductible_leaves: Number(l.absent_days || 0),
-        presence_rate: Math.round(((Number(l.present_days || 0)) / 30) * 100)
+        working_days: 26,
+        present_days: presentCount,
+        leaves_taken: leavesCount,
+        absent_days: absentCount,
+        allowed_leaves: allowedCredit,
+        deductible_leaves: deductible,
+        presence_rate: Math.min(100, Math.round((presentCount / 26) * 100))
       };
     }
 
@@ -695,6 +775,10 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
       [emp.id, curMonth, curYear]
     );
     const c = curAtt[0] || {};
+    const curPresent = Number(c.present_days || 0);
+    const curLeaves = Number(c.leave_days || 0);
+    const curAbsent = Number(c.absent_days || 0);
+    const curRemainingCredit = Math.max(0, parseFloat((quotaAllowed - curLeaves).toFixed(1)));
 
     const applicationNo = `LV-${targetDate.replace(/-/g, '')}-${emp.emp_code}`;
 
@@ -728,9 +812,11 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
         current_month: {
           month: curMonth,
           year: curYear,
-          present_days: Number(c.present_days || 0),
-          leave_days: Number(c.leave_days || 0),
-          absent_days: Number(c.absent_days || 0)
+          present_days: curPresent,
+          leave_days: curLeaves,
+          absent_days: curAbsent,
+          monthly_leave_quota: quotaAllowed,
+          remaining_leave_credit: curRemainingCredit
         }
       }
     });

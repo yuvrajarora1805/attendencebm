@@ -875,7 +875,7 @@ export const ManagerAttendancePage: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setLeavePreSelectedEmpId(r.id);
+                                  setLeavePreSelectedEmpId(r.emp_code || r.emp_id || r.employee_id || r.id);
                                   setLeaveModalOpen(true);
                                 }}
                                 style={{
@@ -916,7 +916,7 @@ export const ManagerAttendancePage: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setLeaveSlipEmpId(r.emp_id || r.id);
+                                      setLeaveSlipEmpId(r.emp_code || r.emp_id || r.employee_id || r.id);
                                       setLeaveSlipDate(r.date || selectedDate);
                                       setLeaveSlipModalOpen(true);
                                     }}

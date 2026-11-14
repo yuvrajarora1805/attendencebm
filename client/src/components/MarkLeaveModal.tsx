@@ -62,9 +62,23 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
       setLeaveType('casual');
 
       if (preSelectedEmpId) {
-        setSelectedEmpId(String(preSelectedEmpId));
-        const found = employees.find(e => String(e.id) === String(preSelectedEmpId));
-        setSelectedEmp(found || null);
+        const found = employees.find(e => 
+          String(e.emp_code).toLowerCase() === String(preSelectedEmpId).toLowerCase() || 
+          String(e.id) === String(preSelectedEmpId)
+        );
+        if (found) {
+          setSelectedEmpId(String(found.id));
+          setSelectedEmp(found);
+        } else {
+          setSelectedEmpId(String(preSelectedEmpId));
+          // Pre-fetch employee details by code/id from backend
+          api.get(`/employees/${preSelectedEmpId}`).then(res => {
+            if (res.data?.success && res.data?.data) {
+              setSelectedEmpId(String(res.data.data.id));
+              setSelectedEmp(res.data.data);
+            }
+          }).catch(console.error);
+        }
       } else {
         setSelectedEmpId('');
         setSelectedEmp(null);
@@ -75,7 +89,7 @@ export const MarkLeaveModal: React.FC<MarkLeaveModalProps> = ({
 
   // Fetch / Refresh slip preview data whenever employee or leave specifics change
   useEffect(() => {
-    const activeId = selectedEmp?.id || selectedEmpId;
+    const activeId = selectedEmp?.emp_code || selectedEmp?.id || selectedEmpId;
     if (isOpen && activeId) {
       fetchSlipPreview(activeId);
     } else {

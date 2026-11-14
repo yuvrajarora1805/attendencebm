@@ -877,7 +877,8 @@ router.post('/', authorizeRoles('admin', 'hr', 'manager'), async (req: Request, 
   const { 
     emp_code, name, department_id, job_role, basic_salary, salary_per_day, increment_rate = 5.0, 
     joining_date, phone, email, address, city_id,
-    referred_by_emp_id, referred_by_name, referred_by_phone, monthly_advance_deduction
+    referred_by_emp_id, referred_by_name, referred_by_phone, monthly_advance_deduction,
+    monthly_leave_quota = 2.0
   } = req.body;
   if (!emp_code || !name) { res.status(400).json({ success: false, message: 'emp_code and name required' }); return; }
   try {
@@ -891,13 +892,13 @@ router.post('/', authorizeRoles('admin', 'hr', 'manager'), async (req: Request, 
         emp_code, name, department_id, job_role, basic_salary, salary_per_day, increment_rate, 
         joining_date, phone, email, address, city_id,
         referred_by_emp_id, referred_by_name, referred_by_phone,
-        salary_approved, salary_approved_by, monthly_advance_deduction, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        salary_approved, salary_approved_by, monthly_advance_deduction, monthly_leave_quota, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         emp_code, name, department_id || null, job_role || null, basic_salary || 0, salary_per_day || 0, increment_rate || 5.0, 
         joining_date || null, phone || null, email || null, address || null, city_id || null,
         referred_by_emp_id || null, referred_by_name || null, referred_by_phone || null,
-        salaryApproved, salaryApprovedBy, monthly_advance_deduction || 0, req.user!.id
+        salaryApproved, salaryApprovedBy, monthly_advance_deduction || 0, monthly_leave_quota !== undefined ? Number(monthly_leave_quota) : 2.0, req.user!.id
       ]
     );
     await auditLog(req.user!.id, req.user!.username, 'create', 'employees', result.insertId, `EMP:${emp_code}`, { name, salaryApproved }, null, req);
@@ -921,7 +922,8 @@ router.put('/:id', authorizeRoles('admin', 'hr', 'manager'), async (req: Request
   const { 
     name, department_id, job_role, basic_salary, salary_per_day, increment_rate, 
     joining_date, phone, email, address, city_id, status,
-    referred_by_emp_id, referred_by_name, referred_by_phone, monthly_advance_deduction
+    referred_by_emp_id, referred_by_name, referred_by_phone, monthly_advance_deduction,
+    monthly_leave_quota
   } = req.body;
   try {
     const isManager = req.user?.role === 'manager';
@@ -945,7 +947,7 @@ router.put('/:id', authorizeRoles('admin', 'hr', 'manager'), async (req: Request
       return res.json({ success: true, message: 'Employee profile updated (Salary parameters are protected)' });
     }
 
-    // Admin / HR updating full profile including salary terms
+    // Admin / HR updating full profile including salary terms and leave quota
     const [existingRows]: any = await pool.query('SELECT basic_salary FROM employees WHERE id = ?', [req.params.id]);
     const prevBasic = existingRows.length ? Number(existingRows[0].basic_salary) : 0;
     const submittedBasic = Number(basic_salary) || 0;
@@ -965,6 +967,11 @@ router.put('/:id', authorizeRoles('admin', 'hr', 'manager'), async (req: Request
       referred_by_emp_id || null, referred_by_name || null, referred_by_phone || null,
       monthly_advance_deduction || 0
     ];
+
+    if (monthly_leave_quota !== undefined) {
+      updateSql += `, monthly_leave_quota = ?`;
+      updateParams.push(parseFloat(monthly_leave_quota) || 2.0);
+    }
 
     if (isManualSalaryChange) {
       updateSql += `, last_increment_date = ?, initial_basic_salary = ?`;
@@ -990,6 +997,22 @@ router.put('/:id', authorizeRoles('admin', 'hr', 'manager'), async (req: Request
   } catch (err) {
     console.error('Error updating employee:', err);
     res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// PATCH /api/employees/:id/leave-quota - Quick edit leave quota (Admin / HR)
+router.patch('/:id/leave-quota', authorizeRoles('admin', 'hr'), async (req: Request, res: Response) => {
+  const quota = parseFloat(req.body.monthly_leave_quota);
+  if (isNaN(quota) || quota < 0 || quota > 31) {
+    return res.status(400).json({ success: false, message: 'Valid monthly leave quota (0 to 31 days) is required' });
+  }
+  try {
+    await pool.query('UPDATE employees SET monthly_leave_quota = ? WHERE id = ?', [quota, req.params.id]);
+    await auditLog(req.user!.id, req.user!.username, 'edit', 'employees', parseInt(req.params.id), 'leave_quota_change', { monthly_leave_quota: quota }, null, req);
+    res.json({ success: true, message: `Leave limit updated to ${quota} days/month`, monthly_leave_quota: quota });
+  } catch (err) {
+    console.error('Error updating leave quota:', err);
+    res.status(500).json({ success: false, message: 'Server error updating leave quota' });
   }
 });
 

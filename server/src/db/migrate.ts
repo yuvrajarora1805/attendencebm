@@ -88,6 +88,10 @@ export async function runAutoMigrations(): Promise<void> {
     try {
       await pool.query(`ALTER TABLE salary_entries ADD COLUMN allowed_leaves_bonus DECIMAL(10,2) DEFAULT 0.00`);
     } catch (e: any) {}
+    try {
+      await pool.query(`ALTER TABLE employees ADD COLUMN monthly_leave_quota DECIMAL(4,1) NOT NULL DEFAULT 2.0`);
+      console.log('✅ Added monthly_leave_quota column to employees table');
+    } catch (e: any) {}
 
     // 5. Create advance_requests table for Manager request & Admin approval workflow
     try {

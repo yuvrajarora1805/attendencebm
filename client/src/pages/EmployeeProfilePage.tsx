@@ -173,6 +173,29 @@ export const EmployeeProfilePage: React.FC = () => {
                   📍 {employee.city_name}
                 </span>
               )}
+              <span 
+                className="badge badge-secondary" 
+                style={{ fontSize: '11px', cursor: isManager ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                title={isManager ? 'Leave quota managed by Admin' : 'Click to update Leave Quota'}
+                onClick={async () => {
+                  if (isManager) return;
+                  const curQ = employee.monthly_leave_quota !== undefined && employee.monthly_leave_quota !== null ? Number(employee.monthly_leave_quota) : 2.0;
+                  const promptVal = prompt(`Update Monthly Leave Quota for ${employee.name} (0 - 31 days):`, String(curQ));
+                  if (promptVal !== null && promptVal.trim() !== '') {
+                    const n = parseFloat(promptVal.trim());
+                    if (!isNaN(n) && n >= 0 && n <= 31) {
+                      try {
+                        await api.patch(`/employees/${employee.id}/leave-quota`, { monthly_leave_quota: n });
+                        loadProfile();
+                      } catch (err: any) {
+                        alert(err.response?.data?.message || 'Failed to update leave quota');
+                      }
+                    }
+                  }
+                }}
+              >
+                🌴 Quota: {Number(employee.monthly_leave_quota || 2.0).toFixed(1)} d/mo {!isManager ? '✏️' : ''}
+              </span>
             </div>
           </div>
 

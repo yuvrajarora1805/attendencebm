@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Edit2, Trash2, Eye } from 'lucide-react';
+import { UserPlus, Edit2, Trash2, Eye, Palmtree } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import Topbar from '../components/Topbar';
@@ -125,6 +125,69 @@ export const EmployeesPage: React.FC = () => {
         render: (row: any) => `Rs. ${Number(row.salary_per_day).toLocaleString()}`
       }
     ]),
+    {
+      key: 'monthly_leave_quota',
+      header: 'Leave Limit',
+      width: '120px',
+      render: (row: any) => {
+        const quota = row.monthly_leave_quota !== undefined && row.monthly_leave_quota !== null 
+          ? Number(row.monthly_leave_quota) 
+          : 2.0;
+
+        const isStandard = quota === 2.0;
+        const isZero = quota === 0;
+
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={async () => {
+                if (isManager) return;
+                const inputVal = window.prompt(
+                  `Update Monthly Allowed Leave Quota for ${row.name} (${row.emp_code}):\n\nEnter allowed paid leaves per month (0 to 31):`,
+                  String(quota)
+                );
+                if (inputVal !== null && inputVal.trim() !== '') {
+                  const newQuota = parseFloat(inputVal.trim());
+                  if (!isNaN(newQuota) && newQuota >= 0 && newQuota <= 31) {
+                    try {
+                      await api.patch(`/employees/${row.id}/leave-quota`, { monthly_leave_quota: newQuota });
+                      setEmployees(prev => prev.map(e => e.id === row.id ? { ...e, monthly_leave_quota: newQuota } : e));
+                    } catch (err: any) {
+                      alert(err.response?.data?.message || 'Failed to update leave quota');
+                    }
+                  } else {
+                    alert('Please enter a valid quota number between 0 and 31 days.');
+                  }
+                }
+              }}
+              style={{
+                cursor: isManager ? 'default' : 'pointer',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '4px 9px',
+                fontSize: '11px',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: isZero ? '#f1f5f9' : isStandard ? '#e0f2fe' : '#ede9fe',
+                color: isZero ? '#64748b' : isStandard ? '#0369a1' : '#6d28d9',
+                transition: 'all 0.2s ease'
+              }}
+              title={isManager ? 'Leave quota managed by Admin' : 'Click to quickly edit leave quota'}
+            >
+              <Palmtree size={12} />
+              <span>{quota.toFixed(1)} d/mo</span>
+              {!isManager && <Edit2 size={10} style={{ opacity: 0.6, marginLeft: '2px' }} />}
+            </button>
+            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+              {(quota * 12).toFixed(0)} d/yr
+            </div>
+          </div>
+        );
+      }
+    },
     {
       key: 'reference',
       header: 'Reference',

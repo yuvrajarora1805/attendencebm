@@ -221,8 +221,10 @@ router.post('/periods/:id/generate', authorizeRoles('admin', 'payroll_operator')
       const perDay = Number(emp.salary_per_day) || parseFloat((Number(emp.basic_salary || 0) / 30).toFixed(2));
 
       // Allowed leaves calculation:
-      // Standard allowed leaves credit per month = 2 days
-      const allowedLeavesQuota = 2.0;
+      // Uses employee's configured monthly_leave_quota (defaults to 2.0 if not set)
+      const allowedLeavesQuota = emp.monthly_leave_quota !== null && emp.monthly_leave_quota !== undefined 
+        ? Number(emp.monthly_leave_quota) 
+        : 2.0;
       let final_leaves = 0;
       let unusedAllowedBonus = 0;
       let incRemarks = '';
