@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Save, Sparkles, AlertCircle, ShieldAlert, Users, Phone, MapPin, DollarSign, Palmtree } from 'lucide-react';
+import { X, UserPlus, Save, Sparkles, AlertCircle, ShieldAlert, Users, Phone, MapPin, Palmtree } from 'lucide-react';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import SearchableEmployeeSelect from './SearchableEmployeeSelect';
@@ -163,8 +163,10 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
         phone: formData.phone || null,
         address: formData.address || null,
         status: formData.status || 'active',
-        monthly_advance_deduction: parseFloat(formData.monthly_advance_deduction) || 0,
-        monthly_leave_quota: parseFloat(formData.monthly_leave_quota) ?? 2.0,
+        monthly_advance_deduction: employee?.monthly_advance_deduction !== undefined ? Number(employee.monthly_advance_deduction) : (parseFloat(formData.monthly_advance_deduction) || 0),
+        monthly_leave_quota: isManager 
+          ? (employee?.monthly_leave_quota !== undefined ? Number(employee.monthly_leave_quota) : 2.0)
+          : (parseFloat(formData.monthly_leave_quota) ?? 2.0),
       };
 
       // Reference details
@@ -499,40 +501,6 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
             )}
           </div>
 
-          {/* Structured Advance Recovery Plan */}
-          <div style={{ 
-            background: 'var(--bg-secondary)', 
-            borderRadius: '12px', 
-            padding: '12px 14px', 
-            border: '1px solid var(--border-color)', 
-            marginBottom: '16px' 
-          }}>
-            <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <DollarSign size={14} color="var(--accent-primary)" /> Advance Recovery Plan (Installment Cap)
-            </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '12px', alignItems: 'center' }}>
-              <div>
-                <label className="form-label" style={{ margin: 0, fontSize: '12px' }}>
-                  Monthly Salary Deduction Target (₹)
-                </label>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  If employee takes a large advance, deduct fixed monthly installment (e.g. ₹2,000/mo) from salary instead of lump sum.
-                </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>₹</span>
-                <input
-                  type="number"
-                  className="form-input"
-                  style={{ textAlign: 'right', fontWeight: 700 }}
-                  value={formData.monthly_advance_deduction}
-                  onChange={(e) => setFormData({ ...formData, monthly_advance_deduction: e.target.value })}
-                  placeholder="2000"
-                />
-              </div>
-            </div>
-          </div>
-
           {/* Increment Rate Setting (Admin Only) */}
           {!isManager && (
             <div style={{
@@ -561,29 +529,29 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
             </div>
           )}
 
-          {/* Monthly Leave Quota / Allowed Leaves Policy */}
-          <div style={{ 
-            background: 'var(--bg-secondary)', 
-            borderRadius: '12px', 
-            padding: '12px 14px', 
-            border: '1px solid var(--border-color)', 
-            marginBottom: '16px' 
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h4 style={{ fontSize: '13px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Palmtree size={14} color="var(--accent-primary)" /> Monthly Allowed Leave Quota (Paid Leaves)
-              </h4>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                Annual: <strong>{(parseFloat(formData.monthly_leave_quota || '0') * 12).toFixed(1)} days/yr</strong>
-              </span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '12px', alignItems: 'center' }}>
-              <div>
+          {/* Monthly Leave Quota / Allowed Leaves Policy (Admin Only) */}
+          {!isManager && (
+            <div style={{ 
+              background: 'var(--bg-secondary)', 
+              borderRadius: '12px', 
+              padding: '12px 14px', 
+              border: '1px solid var(--border-color)', 
+              marginBottom: '16px' 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Palmtree size={14} color="var(--accent-primary)" /> Monthly Allowed Leave Quota (Paid Leaves)
+                </h4>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  Permitted paid leaves per month. Unused leaves are eligible for encashment bonus, while excess absences incur standard salary deductions.
+                  Annual: <strong>{(parseFloat(formData.monthly_leave_quota || '0') * 12).toFixed(1)} days/yr</strong>
                 </span>
-                {!isManager && (
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '12px', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    Permitted paid leaves per month. Unused leaves are eligible for encashment bonus, while excess absences incur standard salary deductions.
+                  </span>
                   <div style={{ display: 'flex', gap: '5px', marginTop: '6px' }}>
                     {['0.0', '1.0', '2.0', '3.0'].map((preset) => (
                       <button
@@ -602,26 +570,25 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                       </button>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  max="31"
-                  disabled={isManager}
-                  className="form-input"
-                  style={{ width: '90px', textAlign: 'center', fontWeight: 800, fontSize: '13px' }}
-                  value={formData.monthly_leave_quota}
-                  onChange={(e) => setFormData({ ...formData, monthly_leave_quota: e.target.value })}
-                  placeholder="2.0"
-                />
-                <span style={{ fontWeight: 700, color: 'var(--accent-primary)', fontSize: '12px' }}>days/mo</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="31"
+                    className="form-input"
+                    style={{ width: '90px', textAlign: 'center', fontWeight: 800, fontSize: '13px' }}
+                    value={formData.monthly_leave_quota}
+                    onChange={(e) => setFormData({ ...formData, monthly_leave_quota: e.target.value })}
+                    placeholder="2.0"
+                  />
+                  <span style={{ fontWeight: 700, color: 'var(--accent-primary)', fontSize: '12px' }}>days/mo</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={loading}>
