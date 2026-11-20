@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import BatchAdvanceModal from '../components/BatchAdvanceModal';
 import MarkLeaveModal from '../components/MarkLeaveModal';
 import LeaveSlipPDF from '../components/LeaveSlipPDF';
+import EditAttendanceModal from '../components/EditAttendanceModal';
 
 export const ManagerAttendancePage: React.FC = () => {
   const { user } = useAuth();
@@ -72,6 +73,7 @@ export const ManagerAttendancePage: React.FC = () => {
   const [leaveSlipModalOpen, setLeaveSlipModalOpen] = useState(false);
   const [leaveSlipEmpId, setLeaveSlipEmpId] = useState<string | number | null>(null);
   const [leaveSlipDate, setLeaveSlipDate] = useState<string>('');
+  const [editRecord, setEditRecord] = useState<any | null>(null);
 
   // Auto-absent action state
   const [autoAbsentLoading, setAutoAbsentLoading] = useState(false);
@@ -1189,22 +1191,50 @@ export const ManagerAttendancePage: React.FC = () => {
                               </button>
                             </div>
                           ) : isPresent && !r.punch_out ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEmpCode(r.emp_code);
-                                setPunchAction('out');
-                              }}
-                              style={{
-                                padding: '3px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '5px',
-                                background: '#f0f9ff', color: '#0284c7', border: '1px solid #bae6fd', cursor: 'pointer'
-                              }}
-                              title="Punch Out this employee"
-                            >
-                              🔵 Punch OUT
-                            </button>
+                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEmpCode(r.emp_code);
+                                  setPunchAction('out');
+                                }}
+                                style={{
+                                  padding: '3px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '5px',
+                                  background: '#f0f9ff', color: '#0284c7', border: '1px solid #bae6fd', cursor: 'pointer'
+                                }}
+                                title="Punch Out this employee"
+                              >
+                                🔵 Punch OUT
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditRecord(r)}
+                                style={{
+                                  padding: '3px 7px', fontSize: '11px', fontWeight: 600, borderRadius: '5px',
+                                  background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', cursor: 'pointer',
+                                  display: 'inline-flex', alignItems: 'center', gap: '2px'
+                                }}
+                                title="Edit punch time or status"
+                              >
+                                ✏️ Edit
+                              </button>
+                            </div>
                           ) : (
-                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Completed</span>
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                              <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>✓ Done</span>
+                              <button
+                                type="button"
+                                onClick={() => setEditRecord(r)}
+                                style={{
+                                  padding: '3px 7px', fontSize: '11px', fontWeight: 600, borderRadius: '5px',
+                                  background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', cursor: 'pointer',
+                                  display: 'inline-flex', alignItems: 'center', gap: '2px'
+                                }}
+                                title="Edit Punch Time"
+                              >
+                                ✏️ Edit
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -1340,6 +1370,18 @@ export const ManagerAttendancePage: React.FC = () => {
         }}
         empId={leaveSlipEmpId}
         leaveDate={leaveSlipDate || selectedDate}
+      />
+
+      {/* Edit Attendance Punch Modal */}
+      <EditAttendanceModal
+        isOpen={!!editRecord}
+        onClose={() => setEditRecord(null)}
+        onSuccess={() => {
+          setBannerAlert({ type: 'success', message: 'Attendance punch updated successfully.' });
+          loadData();
+          setTimeout(() => setBannerAlert(null), 5000);
+        }}
+        record={editRecord}
       />
     </div>
   );

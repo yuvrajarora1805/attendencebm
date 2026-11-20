@@ -505,19 +505,154 @@ router.get('/monthly', async (req: Request, res: Response) => {
   }
 });
 
-// PUT /api/attendance/correction/:id
-router.put('/correction/:id', authorizeRoles('admin', 'hr', 'manager'), async (req: Request, res: Response) => {
-  const { status, reason } = req.body;
-  if (!reason) return res.status(400).json({ success: false, message: 'Reason required for correction' });
+// PUT /api/attendance/record/:id & /correction/:id - Admin/HR/Manager edit attendance punch time, status, date
+router.put(['/record/:id', '/correction/:id'], authorizeRoles('admin', 'hr', 'manager'), async (req: Request, res: Response) => {
+  const { status, punch_in, punch_out, date, reason, notes } = req.body;
+  const updateReason = reason || notes || 'Manual attendance correction by admin';
+
   try {
-    await pool.query(
-      `UPDATE attendance_records SET status=?, is_corrected=1, correction_reason=?, corrected_by=?, corrected_at=NOW() WHERE id=?`,
-      [status || 'present', reason, req.user!.id, req.params.id]
+    const [existingRows] = await pool.query<any[]>(
+      `SELECT ar.*, e.name, e.emp_code FROM attendance_records ar JOIN employees e ON ar.emp_id = e.id WHERE ar.id = ?`,
+      [req.params.id]
     );
-    await auditLog(req.user!.id, req.user!.username, 'edit', 'attendance', parseInt(req.params.id), null, req.body, reason, req);
-    return res.json({ success: true, message: 'Attendance corrected' });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Server error' });
+    if (!existingRows.length) {
+      return res.status(404).json({ success: false, message: 'Attendance record not found' });
+    }
+    const existing = existingRows[0];
+
+    // Determine target attendance date string
+    let targetDateStr = date ? String(date).slice(0, 10) : (
+      existing.date instanceof Date ? existing.date.toISOString().split('T')[0] : String(existing.date).slice(0, 10)
+    );
+
+    // Resolve punch_in
+    let newPunchIn: Date | null = existing.punch_in ? new Date(existing.punch_in) : null;
+    if (punch_in !== undefined) {
+      if (punch_in === null || punch_in === '') {
+        newPunchIn = null;
+      } else if (typeof punch_in === 'string' && punch_in.includes('T')) {
+        newPunchIn = new Date(punch_in);
+      } else {
+        newPunchIn = parseISTDateTime(targetDateStr, String(punch_in));
+      }
+    }
+
+    // Resolve punch_out
+    let newPunchOut: Date | null = existing.punch_out ? new Date(existing.punch_out) : null;
+    if (punch_out !== undefined) {
+      if (punch_out === null || punch_out === '') {
+        newPunchOut = null;
+      } else if (typeof punch_out === 'string' && punch_out.includes('T')) {
+        newPunchOut = new Date(punch_out);
+      } else {
+        newPunchOut = parseISTDateTime(targetDateStr, String(punch_out));
+      }
+    }
+
+    if (newPunchIn && newPunchOut && newPunchOut <= newPunchIn) {
+      // Cross-midnight shift handling
+      newPunchOut = new Date(newPunchOut.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    // Recalculate schedule late and overtime
+    let isLate = 0;
+    let lateMinutes = 0;
+    let overtimeHours = 0;
+
+    const [schedRows] = await pool.query<any[]>('SELECT * FROM work_schedules WHERE is_default = 1 LIMIT 1');
+    const sched = schedRows[0];
+
+    if (sched && newPunchIn) {
+      const schedStart = parseISTDateTime(targetDateStr, sched.work_start);
+      schedStart.setMinutes(schedStart.getMinutes() + (sched.late_threshold_minutes || 15));
+      if (newPunchIn > schedStart) {
+        isLate = 1;
+        lateMinutes = Math.floor((newPunchIn.getTime() - schedStart.getTime()) / 60000);
+      }
+    }
+
+    if (sched && newPunchOut) {
+      const schedEnd = parseISTDateTime(targetDateStr, sched.work_end);
+      if (newPunchOut > schedEnd) {
+        overtimeHours = parseFloat(((newPunchOut.getTime() - schedEnd.getTime()) / 3600000).toFixed(2));
+      }
+    }
+
+    // Resolve status
+    let finalStatus = status;
+    if (!finalStatus) {
+      if (newPunchIn) {
+        finalStatus = isLate ? 'late' : 'present';
+      } else {
+        finalStatus = existing.status || 'present';
+      }
+    }
+
+    const combinedNotes = notes !== undefined ? notes : existing.notes;
+
+    await pool.query(
+      `UPDATE attendance_records SET 
+         date = ?,
+         punch_in = ?, 
+         punch_out = ?, 
+         status = ?, 
+         is_late = ?, 
+         late_minutes = ?, 
+         overtime_hours = ?, 
+         notes = ?,
+         is_corrected = 1, 
+         correction_reason = ?, 
+         corrected_by = ?, 
+         corrected_at = NOW() 
+       WHERE id = ?`,
+      [
+        targetDateStr,
+        newPunchIn,
+        newPunchOut,
+        finalStatus,
+        isLate,
+        lateMinutes,
+        overtimeHours,
+        combinedNotes,
+        updateReason,
+        req.user!.id,
+        req.params.id
+      ]
+    );
+
+    // Audit log
+    await auditLog(
+      req.user!.id,
+      req.user!.username,
+      'edit_punch',
+      'attendance',
+      parseInt(req.params.id),
+      `${existing.name} (${existing.emp_code})`,
+      {
+        previous: { punch_in: existing.punch_in, punch_out: existing.punch_out, status: existing.status, date: existing.date },
+        updated: { punch_in: newPunchIn, punch_out: newPunchOut, status: finalStatus, date: targetDateStr, is_late: isLate, late_minutes: lateMinutes, overtime_hours: overtimeHours }
+      },
+      `Edited attendance punch: ${existing.name} (${existing.emp_code}) on ${targetDateStr} - ${updateReason}`,
+      req
+    );
+
+    return res.json({
+      success: true,
+      message: 'Attendance punch updated successfully',
+      data: {
+        id: parseInt(req.params.id),
+        date: targetDateStr,
+        punch_in: newPunchIn,
+        punch_out: newPunchOut,
+        status: finalStatus,
+        is_late: isLate === 1,
+        late_minutes: lateMinutes,
+        overtime_hours: overtimeHours
+      }
+    });
+  } catch (err: any) {
+    console.error('Error updating attendance record:', err);
+    return res.status(500).json({ success: false, message: 'Server error updating attendance record' });
   }
 });
 

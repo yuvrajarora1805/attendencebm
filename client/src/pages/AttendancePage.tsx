@@ -6,6 +6,7 @@ import Topbar from '../components/Topbar';
 import DataTable, { Column } from '../components/DataTable';
 import { useAuth } from '../context/AuthContext';
 import ManualPunchModal from '../components/ManualPunchModal';
+import EditAttendanceModal from '../components/EditAttendanceModal';
 
 export const AttendancePage: React.FC = () => {
   const navigate = useNavigate();
@@ -16,9 +17,6 @@ export const AttendancePage: React.FC = () => {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingRow, setEditingRow] = useState<any | null>(null);
-  const [editStatus, setEditStatus] = useState('present');
-  const [editReason, setEditReason] = useState('');
-  const [saving, setSaving] = useState(false);
   const [todayMeta, setTodayMeta] = useState<any>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -56,23 +54,6 @@ export const AttendancePage: React.FC = () => {
     }, 30000);
     return () => clearInterval(interval);
   }, [viewMode, autoRefresh]);
-
-  const handleSaveCorrection = async () => {
-    if (!editingRow) return;
-    try {
-      setSaving(true);
-      await api.put(`/attendance/correction/${editingRow.id}`, {
-        status: editStatus,
-        reason: editReason || 'Manual supervisor correction'
-      });
-      setEditingRow(null);
-      fetchAttendance();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to update attendance');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // Calculate summary counts for Today
   const todayPresentCount = records.filter(r => r.status === 'present').length;
@@ -187,18 +168,16 @@ export const AttendancePage: React.FC = () => {
           >
             <Eye size={12} /> Analytics
           </button>
-          {hasRole('admin', 'hr') && (
+          {hasRole('admin', 'hr', 'manager') && (
             <button
               className="btn btn-secondary"
-              style={{ padding: '4px 6px', fontSize: '11px' }}
+              style={{ padding: '4px 6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}
               onClick={() => {
                 setEditingRow(row);
-                setEditStatus(row.status);
-                setEditReason('');
               }}
-              title="Supervisor Correction"
+              title="Edit Punch Time & Attendance"
             >
-              <Edit3 size={12} />
+              <Edit3 size={12} /> Edit
             </button>
           )}
         </div>
@@ -402,53 +381,12 @@ export const AttendancePage: React.FC = () => {
         )}
       </div>
 
-      {editingRow && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '420px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>
-              Attendance Correction: {editingRow.emp_name || editingRow.name}
-            </h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-              Date: {editingRow.date?.slice(0, 10)} | Original: {editingRow.status}
-            </p>
-
-            <div className="form-group" style={{ marginBottom: '14px' }}>
-              <label className="form-label">Corrected Status</label>
-              <select
-                className="form-input"
-                value={editStatus}
-                onChange={(e) => setEditStatus(e.target.value)}
-              >
-                <option value="present">Present</option>
-                <option value="late">Late</option>
-                <option value="half-day">Half Day</option>
-                <option value="absent">Absent</option>
-                <option value="on-leave">On Leave</option>
-              </select>
-            </div>
-
-            <div className="form-group" style={{ marginBottom: '20px' }}>
-              <label className="form-label">Reason / Notes (Audit Log)</label>
-              <input
-                type="text"
-                className="form-input"
-                value={editReason}
-                onChange={(e) => setEditReason(e.target.value)}
-                placeholder="e.g. Device biometric failure, verified by HR"
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="btn btn-secondary" onClick={() => setEditingRow(null)}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleSaveCorrection} disabled={saving}>
-                {saving ? 'Saving...' : 'Apply Correction'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <EditAttendanceModal
+        isOpen={!!editingRow}
+        onClose={() => setEditingRow(null)}
+        onSuccess={() => fetchAttendance(false)}
+        record={editingRow}
+      />
 
       <ManualPunchModal
         isOpen={punchModalOpen}
