@@ -21,6 +21,7 @@ import userRoutes from './routes/users';
 import advanceRoutes from './routes/advances';
 import reportRoutes from './routes/reports';
 import backupRoutes from './routes/backup';
+import gatePassRoutes from './routes/gatePass';
 
 dotenv.config();
 
@@ -57,6 +58,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/advances', advanceRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/backup', backupRoutes);
+app.use('/api/gate-pass', gatePassRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

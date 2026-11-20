@@ -59,6 +59,7 @@ export const AttendancePage: React.FC = () => {
   const todayPresentCount = records.filter(r => r.status === 'present').length;
   const todayLateCount = records.filter(r => r.status === 'late' || Number(r.late_minutes) > 0).length;
   const todayStillInCount = records.filter(r => r.punch_in && !r.punch_out).length;
+  const todayGatePassCount = records.filter(r => r.active_gate_pass).length;
 
   const columns: Column<any>[] = [
     ...(viewMode === 'monthly' ? [{
@@ -86,11 +87,33 @@ export const AttendancePage: React.FC = () => {
       header: 'Employee', 
       render: (row: any) => (
         <div 
-          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+          style={{ cursor: 'pointer' }}
           onClick={() => navigate(`/employees/${row.emp_id}`)}
           title="Click to view analytics & profile"
         >
-          <strong>{row.emp_name || row.name}</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <strong>{row.emp_name || row.name}</strong>
+            {row.active_gate_pass && (
+              <span style={{
+                padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800,
+                background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca'
+              }}>
+                🚪 OUT ({row.active_gate_pass.pass_type?.toUpperCase()})
+              </span>
+            )}
+          </div>
+          {row.active_gate_pass && (
+            <div style={{ fontSize: '10px', color: '#dc2626', fontWeight: 600, marginTop: '2px' }}>
+              Out: {row.active_gate_pass.actual_out_time ? new Date(row.active_gate_pass.actual_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : row.active_gate_pass.expected_out_time}
+              {row.active_gate_pass.reason ? ` • "${row.active_gate_pass.reason}"` : ''}
+            </div>
+          )}
+          {Number(row.gate_pass_minutes || 0) > 0 && !row.active_gate_pass && (
+            <div style={{ fontSize: '10px', color: '#b45309', fontWeight: 600, marginTop: '2px' }}>
+              🎫 Gate Pass: -{Math.floor(row.gate_pass_minutes / 60)}h {row.gate_pass_minutes % 60}m cut
+              {row.gate_passes?.length ? ` (${row.gate_passes.map((p: any) => p.reason).filter(Boolean).join(', ')})` : ''}
+            </div>
+          )}
         </div>
       ) 
     },
@@ -109,12 +132,38 @@ export const AttendancePage: React.FC = () => {
       header: 'Punch Out', 
       render: (row: any) => {
         if (!row.punch_out && row.punch_in) {
+          if (row.active_gate_pass) {
+            return (
+              <div>
+                <span className="badge badge-danger" style={{ fontSize: '10px' }}>🚪 Outside on Pass</span>
+                <div style={{ fontSize: '10px', color: '#dc2626', marginTop: '2px' }}>
+                  {row.active_gate_pass.reason}
+                </div>
+              </div>
+            );
+          }
           return <span className="badge badge-warning" style={{ fontSize: '10px' }}>🟢 Still Working</span>;
         }
         return row.punch_out ? (
-          <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>
-            {new Date(row.punch_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
+          <div>
+            <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>
+              {new Date(row.punch_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            {row.punch_in && (() => {
+              const rawMins = Math.round((new Date(row.punch_out).getTime() - new Date(row.punch_in).getTime()) / (1000 * 60));
+              const effMins = Math.max(0, rawMins - (Number(row.gate_pass_minutes) || 0));
+              return (
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                  ⏱️ {Math.floor(effMins / 60)}h {effMins % 60}m net
+                  {Number(row.gate_pass_minutes) > 0 && (
+                    <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: '3px' }}>
+                      (-{row.gate_pass_minutes}m GP)
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
         ) : '—';
       }
     },
@@ -361,6 +410,21 @@ export const AttendancePage: React.FC = () => {
               </div>
               <div style={{ fontSize: '24px', fontWeight: 700, color: '#3b82f6', marginTop: '4px' }}>
                 {todayStillInCount}
+              </div>
+            </div>
+
+            <div style={{
+              background: 'var(--surface-card, #ffffff)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            }}>
+              <div style={{ fontSize: '11px', color: '#c2410c', fontWeight: 600, textTransform: 'uppercase' }}>
+                🚪 Outside on Pass
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: 700, color: '#ea580c', marginTop: '4px' }}>
+                {todayGatePassCount}
               </div>
             </div>
           </div>

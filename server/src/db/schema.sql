@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS attendance_records (
   late_minutes INT DEFAULT 0,
   overtime_hours DECIMAL(4,2) DEFAULT 0.00,
   break_minutes INT DEFAULT 0,
+  gate_pass_minutes INT DEFAULT 0,
   notes TEXT NULL,
   is_corrected TINYINT(1) DEFAULT 0,
   correction_reason TEXT NULL,
@@ -407,6 +408,41 @@ INSERT IGNORE INTO departments (name) VALUES
 -- ============================================================
 INSERT IGNORE INTO work_schedules (name, work_start, work_end, late_threshold_minutes, is_default) VALUES
 ('Standard (9 AM - 6 PM)', '09:00:00', '18:00:00', 15, 1);
+
+-- ============================================================
+-- TABLE: gate_passes
+-- ============================================================
+CREATE TABLE IF NOT EXISTS gate_passes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pass_number VARCHAR(50) UNIQUE NOT NULL,
+  emp_id INT NOT NULL,
+  date DATE NOT NULL,
+  pass_type ENUM('personal', 'official', 'emergency') NOT NULL DEFAULT 'personal',
+  reason TEXT NOT NULL,
+  expected_out_time TIME NOT NULL,
+  expected_in_time TIME NULL,
+  actual_out_time DATETIME NULL,
+  actual_in_time DATETIME NULL,
+  total_minutes INT DEFAULT 0,
+  is_deductible TINYINT(1) DEFAULT 1,
+  status ENUM('pending', 'approved', 'rejected', 'out', 'completed', 'cancelled') NOT NULL DEFAULT 'approved',
+  approved_by INT NULL,
+  approved_at DATETIME NULL,
+  guard_out_by INT NULL,
+  guard_in_by INT NULL,
+  notes TEXT NULL,
+  created_by INT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (emp_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (guard_out_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (guard_in_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_emp_date (emp_id, date),
+  INDEX idx_date (date),
+  INDEX idx_status (status)
+) ENGINE=InnoDB;
 
 -- ============================================================
 -- SEED: System Settings

@@ -14,6 +14,7 @@ import BackupPage from './pages/BackupPage';
 import UsersPage from './pages/UsersPage';
 import EmployeeProfilePage from './pages/EmployeeProfilePage';
 import AdvancesPage from './pages/AdvancesPage';
+import GatePassPage from './pages/GatePassPage';
 
 import ManagerAttendancePage from './pages/ManagerAttendancePage';
 
@@ -79,6 +80,10 @@ export const App: React.FC = () => {
             
             <Route element={<ProtectedRoute allowedRoles={['admin', 'manager', 'hr']} />}>
               <Route path="/manager" element={<ManagerAttendancePage />} />
+            </Route>
+
+            <Route element={<ProtectedRoute allowedRoles={['admin', 'manager', 'hr', 'security_guard']} />}>
+              <Route path="/gate-pass" element={<GatePassPage />} />
             </Route>
 
             <Route element={<ProtectedRoute allowedRoles={['admin', 'hr', 'payroll', 'viewer']} />}>

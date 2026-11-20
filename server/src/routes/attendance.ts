@@ -317,6 +317,26 @@ router.get('/today', async (req: Request, res: Response) => {
       unpunched_count: unpunchedCount
     };
 
+    // Query gate passes for this date to display in attendance roster
+    let gatePassesByEmp = new Map<number, any[]>();
+    try {
+      const [gpRows]: any = await pool.query(
+        `SELECT id, pass_number, emp_id, date, pass_type, reason, 
+                expected_out_time, expected_in_time, actual_out_time, actual_in_time, 
+                total_minutes, is_deductible, status 
+         FROM gate_passes 
+         WHERE date = ? AND status != 'cancelled'`,
+        [today]
+      );
+      for (const gp of gpRows) {
+        const list = gatePassesByEmp.get(gp.emp_id) || [];
+        list.push(gp);
+        gatePassesByEmp.set(gp.emp_id, list);
+      }
+    } catch (gpErr) {
+      // In case table is initializing
+    }
+
     // If legacy non-paginated mode requested (e.g. from GuardPunchPage or AttendancePage)
     if (!isPaginated) {
       const [rows] = await pool.query<any[]>(
@@ -338,6 +358,20 @@ router.get('/today', async (req: Request, res: Response) => {
          ORDER BY COALESCE(ar.punch_out, ar.punch_in) DESC, ar.id DESC`,
         [today]
       );
+
+      const enrichedRows = rows.map(r => {
+        const passes = gatePassesByEmp.get(r.emp_id) || [];
+        const totalCut = passes
+          .filter(p => p.is_deductible && (p.status === 'out' || p.status === 'completed'))
+          .reduce((sum, p) => sum + (p.total_minutes || 0), 0);
+        const activePass = passes.find(p => p.status === 'out');
+        return {
+          ...r,
+          gate_passes: passes,
+          gate_pass_minutes: r.gate_pass_minutes || totalCut,
+          active_gate_pass: activePass || null
+        };
+      });
 
       const [unpunchedRows] = await pool.query<any[]>(
         `SELECT 
@@ -361,7 +395,7 @@ router.get('/today', async (req: Request, res: Response) => {
 
       return res.json({
         success: true,
-        data: rows,
+        data: enrichedRows,
         unpunched: unpunchedRows,
         meta
       });
@@ -464,9 +498,23 @@ router.get('/today', async (req: Request, res: Response) => {
       chunkParams
     );
 
+    const enrichedChunkRows = chunkRows.map(r => {
+      const passes = gatePassesByEmp.get(r.emp_id) || [];
+      const totalCut = passes
+        .filter(p => p.is_deductible && (p.status === 'out' || p.status === 'completed'))
+        .reduce((sum, p) => sum + (p.total_minutes || 0), 0);
+      const activePass = passes.find(p => p.status === 'out');
+      return {
+        ...r,
+        gate_passes: passes,
+        gate_pass_minutes: r.gate_pass_minutes || totalCut,
+        active_gate_pass: activePass || null
+      };
+    });
+
     return res.json({
       success: true,
-      data: chunkRows,
+      data: enrichedChunkRows,
       pagination: {
         page,
         limit,

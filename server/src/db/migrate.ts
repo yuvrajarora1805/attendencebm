@@ -286,6 +286,56 @@ export async function runAutoMigrations(): Promise<void> {
     } catch (e: any) {
       console.warn('Note on system_settings table migration:', e.message);
     }
+
+    // 12. Ensure gate_pass_minutes column exists on attendance_records
+    try {
+      await pool.query(`ALTER TABLE attendance_records ADD COLUMN gate_pass_minutes INT DEFAULT 0`);
+      console.log('✅ Added gate_pass_minutes column to attendance_records');
+    } catch (e: any) {
+      if (e.code !== 'ER_DUP_FIELDNAME' && !e.message?.includes('Duplicate column')) {
+        console.warn('Note on attendance_records gate_pass_minutes column:', e.message);
+      }
+    }
+
+    // 13. Ensure gate_passes table exists
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS gate_passes (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          pass_number VARCHAR(50) UNIQUE NOT NULL,
+          emp_id INT NOT NULL,
+          date DATE NOT NULL,
+          pass_type ENUM('personal', 'official', 'emergency') NOT NULL DEFAULT 'personal',
+          reason TEXT NOT NULL,
+          expected_out_time TIME NOT NULL,
+          expected_in_time TIME NULL,
+          actual_out_time DATETIME NULL,
+          actual_in_time DATETIME NULL,
+          total_minutes INT DEFAULT 0,
+          is_deductible TINYINT(1) DEFAULT 1,
+          status ENUM('pending', 'approved', 'rejected', 'out', 'completed', 'cancelled') NOT NULL DEFAULT 'approved',
+          approved_by INT NULL,
+          approved_at DATETIME NULL,
+          guard_out_by INT NULL,
+          guard_in_by INT NULL,
+          notes TEXT NULL,
+          created_by INT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (emp_id) REFERENCES employees(id) ON DELETE CASCADE,
+          FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (guard_out_by) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (guard_in_by) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+          INDEX idx_emp_date (emp_id, date),
+          INDEX idx_date (date),
+          INDEX idx_status (status)
+        ) ENGINE=InnoDB
+      `);
+      console.log('✅ Checked/created gate_passes table');
+    } catch (e: any) {
+      console.warn('Note on gate_passes table migration:', e.message);
+    }
   } catch (err: any) {
     console.error('Migration check warning:', err.message);
   }

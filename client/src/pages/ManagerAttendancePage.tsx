@@ -3,7 +3,7 @@ import {
   Clock, Calendar, UserCheck, CheckCircle2, AlertTriangle, 
   Search, ShieldAlert, ArrowRightCircle, Sparkles, RefreshCw, Send, DollarSign,
   Palmtree, UserX, AlertCircle, RotateCcw, FileText, Printer,
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, DoorOpen
 } from 'lucide-react';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +11,7 @@ import BatchAdvanceModal from '../components/BatchAdvanceModal';
 import MarkLeaveModal from '../components/MarkLeaveModal';
 import LeaveSlipPDF from '../components/LeaveSlipPDF';
 import EditAttendanceModal from '../components/EditAttendanceModal';
+import ApplyGatePassModal from '../components/ApplyGatePassModal';
 
 export const ManagerAttendancePage: React.FC = () => {
   const { user } = useAuth();
@@ -74,6 +75,10 @@ export const ManagerAttendancePage: React.FC = () => {
   const [leaveSlipEmpId, setLeaveSlipEmpId] = useState<string | number | null>(null);
   const [leaveSlipDate, setLeaveSlipDate] = useState<string>('');
   const [editRecord, setEditRecord] = useState<any | null>(null);
+
+  // Gate Pass Modal state
+  const [gatePassModalOpen, setGatePassModalOpen] = useState(false);
+  const [gatePassEmpId, setGatePassEmpId] = useState<string | number | null>(null);
 
   // Auto-absent action state
   const [autoAbsentLoading, setAutoAbsentLoading] = useState(false);
@@ -344,6 +349,28 @@ export const ManagerAttendancePage: React.FC = () => {
     }
   };
 
+  // Quick Gate IN return handler
+  const handleQuickGateIn = async (passId: number, empName: string) => {
+    if (!window.confirm(`Mark Gate IN (Premises Return) for ${empName} now?`)) return;
+    try {
+      await api.post(`/gate-pass/${passId}/in`, {
+        actual_in_time: new Date().toISOString()
+      });
+      setBannerAlert({
+        type: 'success',
+        message: `${empName} marked Gate IN successfully. Shift deduction updated.`
+      });
+      loadData(true);
+      setTimeout(() => setBannerAlert(null), 5000);
+    } catch (err: any) {
+      setBannerAlert({
+        type: 'error',
+        message: err.response?.data?.message || 'Failed to record Gate IN'
+      });
+      setTimeout(() => setBannerAlert(null), 5000);
+    }
+  };
+
   // Pre-fill punch form
   const handleQuickPunch = (code: string, act?: 'both' | 'auto' | 'in' | 'out') => {
     setEmpCode(code);
@@ -502,6 +529,22 @@ export const ManagerAttendancePage: React.FC = () => {
             <DollarSign size={16} /> Advance Checklist
           </button>
 
+          {/* Gate Pass Button */}
+          <button
+            className="btn btn-secondary"
+            style={{ 
+              display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, padding: '9px 14px',
+              background: '#f8fafc', border: '1px solid #cbd5e1', color: '#1e293b'
+            }}
+            onClick={() => {
+              setGatePassEmpId(null);
+              setGatePassModalOpen(true);
+            }}
+            title="Issue Gate Pass for Staff"
+          >
+            <DoorOpen size={16} color="#d97706" /> Gate Pass
+          </button>
+
           {/* Live Clock & Date Selector */}
           <div style={{ textAlign: 'right', marginLeft: '6px', paddingLeft: '12px', borderLeft: '1px solid #cbd5e1' }}>
             <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--accent-primary)', lineHeight: 1 }}>
@@ -549,7 +592,7 @@ export const ManagerAttendancePage: React.FC = () => {
 
       {/* Metrics Counter Bar */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '20px'
+        display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px', marginBottom: '20px'
       }}>
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 16px' }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Active Staff</div>
@@ -563,7 +606,17 @@ export const ManagerAttendancePage: React.FC = () => {
           <div style={{ fontSize: '22px', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
             {meta.punched_count || 0}
             <span style={{ fontSize: '11px', fontWeight: 500, color: '#16a34a', marginLeft: '6px' }}>
-              ({meta.active_inside_count || 0} working inside)
+              ({meta.active_inside_count || 0} inside)
+            </span>
+          </div>
+        </div>
+
+        <div style={{ background: '#fff7ed', border: '1px solid #ffedd5', borderRadius: '12px', padding: '12px 16px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#c2410c', textTransform: 'uppercase' }}>🚪 Outside on Pass</div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: '#ea580c', marginTop: '2px' }}>
+            {records.filter(r => r.active_gate_pass).length}
+            <span style={{ fontSize: '11px', fontWeight: 500, color: '#c2410c', marginLeft: '6px' }}>
+              ({records.reduce((sum, r) => sum + (Number(r.gate_pass_minutes) || 0), 0)}m cut)
             </span>
           </div>
         </div>
@@ -1053,7 +1106,39 @@ export const ManagerAttendancePage: React.FC = () => {
                       <tr key={idx} style={{ background: isUnpunched ? '#fffdfa' : 'transparent' }}>
                         <td style={{ fontWeight: 700, color: 'var(--accent-primary)' }}>{r.emp_code}</td>
                         <td>
-                          <strong>{r.name || r.emp_name}</strong>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <strong>{r.name || r.emp_name}</strong>
+                            {r.active_gate_pass && (
+                              <span style={{
+                                padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800,
+                                background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
+                                display: 'inline-flex', alignItems: 'center', gap: '3px'
+                              }}>
+                                🚪 OUT ({r.active_gate_pass.pass_type?.toUpperCase()})
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Active Gate Pass notice & reason */}
+                          {r.active_gate_pass && (
+                            <div style={{ fontSize: '10px', color: '#b91c1c', marginTop: '2px', fontWeight: 600 }}>
+                              Out at {r.active_gate_pass.actual_out_time ? new Date(r.active_gate_pass.actual_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : r.active_gate_pass.expected_out_time}
+                              {r.active_gate_pass.reason ? ` • Reason: "${r.active_gate_pass.reason}"` : ''}
+                            </div>
+                          )}
+
+                          {/* Completed Gate Pass deduction & reason */}
+                          {Number(r.gate_pass_minutes || 0) > 0 && !r.active_gate_pass && (
+                            <div style={{ fontSize: '10px', color: '#b45309', marginTop: '2px', fontWeight: 600 }}>
+                              🎫 Gate Pass: -{Math.floor(r.gate_pass_minutes / 60)}h {r.gate_pass_minutes % 60}m cut
+                              {r.gate_passes && r.gate_passes.length > 0 && (
+                                <span style={{ color: '#64748b', fontWeight: 500, marginLeft: '4px' }}>
+                                  ({r.gate_passes.map((p: any) => p.reason).filter(Boolean).join(', ')})
+                                </span>
+                              )}
+                            </div>
+                          )}
+
                           {r.notes && (
                             <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
                               {r.notes}
@@ -1070,9 +1155,25 @@ export const ManagerAttendancePage: React.FC = () => {
                         </td>
                         <td>
                           {r.punch_out ? (
-                            <span style={{ color: '#0284c7', fontWeight: 600 }}>
-                              {new Date(r.punch_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
+                            <div>
+                              <span style={{ color: '#0284c7', fontWeight: 600 }}>
+                                {new Date(r.punch_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              {r.punch_in && (() => {
+                                const rawMins = Math.round((new Date(r.punch_out).getTime() - new Date(r.punch_in).getTime()) / (1000 * 60));
+                                const effMins = Math.max(0, rawMins - (Number(r.gate_pass_minutes) || 0));
+                                return (
+                                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '1px' }}>
+                                    ⏱️ {Math.floor(effMins / 60)}h {effMins % 60}m net
+                                    {Number(r.gate_pass_minutes) > 0 && (
+                                      <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: '3px' }}>
+                                        (-{r.gate_pass_minutes}m GP)
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
                           ) : '—'}
                         </td>
                         <td>
@@ -1191,7 +1292,37 @@ export const ManagerAttendancePage: React.FC = () => {
                               </button>
                             </div>
                           ) : isPresent && !r.punch_out ? (
-                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                              {r.active_gate_pass ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickGateIn(r.active_gate_pass.id, r.name || r.emp_name)}
+                                  style={{
+                                    padding: '3px 8px', fontSize: '11px', fontWeight: 700, borderRadius: '5px',
+                                    background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', cursor: 'pointer',
+                                    display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                  }}
+                                  title="Mark employee Gate IN (Premises Return)"
+                                >
+                                  🚪 IN
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGatePassEmpId(r.emp_id || r.employee_id || r.id || r.emp_code);
+                                    setGatePassModalOpen(true);
+                                  }}
+                                  style={{
+                                    padding: '3px 7px', fontSize: '11px', fontWeight: 600, borderRadius: '5px',
+                                    background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', cursor: 'pointer',
+                                    display: 'inline-flex', alignItems: 'center', gap: '2px'
+                                  }}
+                                  title="Issue Gate Pass for this employee"
+                                >
+                                  🎫 Pass
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1220,7 +1351,35 @@ export const ManagerAttendancePage: React.FC = () => {
                               </button>
                             </div>
                           ) : (
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+                              {r.active_gate_pass ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickGateIn(r.active_gate_pass.id, r.name || r.emp_name)}
+                                  style={{
+                                    padding: '3px 7px', fontSize: '11px', fontWeight: 700, borderRadius: '5px',
+                                    background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', cursor: 'pointer'
+                                  }}
+                                  title="Mark Gate IN (Return)"
+                                >
+                                  🚪 IN
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGatePassEmpId(r.emp_id || r.employee_id || r.id || r.emp_code);
+                                    setGatePassModalOpen(true);
+                                  }}
+                                  style={{
+                                    padding: '3px 6px', fontSize: '11px', fontWeight: 600, borderRadius: '5px',
+                                    background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', cursor: 'pointer'
+                                  }}
+                                  title="Issue Gate Pass"
+                                >
+                                  🎫 Pass
+                                </button>
+                              )}
                               <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>✓ Done</span>
                               <button
                                 type="button"
@@ -1382,6 +1541,24 @@ export const ManagerAttendancePage: React.FC = () => {
           setTimeout(() => setBannerAlert(null), 5000);
         }}
         record={editRecord}
+      />
+
+      {/* Apply Gate Pass Modal */}
+      <ApplyGatePassModal
+        isOpen={gatePassModalOpen}
+        onClose={() => {
+          setGatePassModalOpen(false);
+          setGatePassEmpId(null);
+        }}
+        onSuccess={() => {
+          setGatePassModalOpen(false);
+          setGatePassEmpId(null);
+          setBannerAlert({ type: 'success', message: 'Gate pass generated successfully.' });
+          loadData(true);
+          setTimeout(() => setBannerAlert(null), 5000);
+        }}
+        defaultEmpId={gatePassEmpId}
+        defaultDate={selectedDate}
       />
     </div>
   );

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarCheck, Banknote,
   FileSpreadsheet, ShieldAlert, Database,
-  UserCog, LogOut, CheckSquare
+  UserCog, LogOut, CheckSquare, DoorOpen
 } from 'lucide-react';
 
 interface NavEntry {
@@ -25,6 +25,7 @@ const navItems: { section: string; items: NavEntry[] }[] = [
     section: 'Operations',
     items: [
       { path: '/manager', label: 'Manager Attendance', icon: CalendarCheck, roles: ['admin', 'manager', 'hr'] },
+      { path: '/gate-pass', label: 'Gate Pass', icon: DoorOpen, roles: ['admin', 'manager', 'hr', 'security_guard'] },
       { path: '/employees', label: 'Employees', icon: Users, roles: ['admin', 'hr', 'manager'] },
       { path: '/attendance', label: 'Attendance (All)', icon: CalendarCheck, roles: ['admin', 'hr', 'payroll'] },
       { path: '/advances', label: 'Advances & Loans', icon: Banknote, roles: ['admin', 'hr', 'payroll', 'manager'] },
