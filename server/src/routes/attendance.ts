@@ -6,6 +6,20 @@ import { auditLog } from '../utils/auditLogger';
 const router = Router();
 router.use(authenticate);
 
+// Helper: get current date in IST (YYYY-MM-DD)
+export const getTodayDateIST = (): string => {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+};
+
+// Helper: parse IST wall-clock date and time into a precise Date object
+// E.g. date '2026-11-20', time '09:00' -> new Date('2026-11-20T09:00:00+05:30')
+// Explicitly specifying +05:30 ensures the resulting UTC representation is identical
+// whether Node.js runs on a local machine (IST) or a remote VPS/server (UTC).
+export const parseISTDateTime = (dateStr: string, timeStr: string): Date => {
+  const cleanTime = timeStr.length === 5 ? `${timeStr}:00` : timeStr;
+  return new Date(`${dateStr}T${cleanTime}+05:30`);
+};
+
 // POST /api/attendance/punch - Guard, Manager, HR punches in/out
 router.post('/punch', async (req: Request, res: Response) => {
   if (!['admin', 'hr', 'security_guard', 'guard', 'manager'].includes(req.user!.role)) {
@@ -21,20 +35,18 @@ router.post('/punch', async (req: Request, res: Response) => {
     const emp = empRows[0];
     
     // Support custom punch time / date if provided by manager/admin
-    let punchDateStr = punch_date ? String(punch_date).slice(0, 10) : new Date().toISOString().split('T')[0];
+    let punchDateStr = punch_date ? String(punch_date).slice(0, 10) : getTodayDateIST();
     let punchDateTime: Date;
 
-    const currentTimeStr = new Date().toTimeString().split(' ')[0]; // 'HH:MM:SS'
     if (punch_time) {
       if (punch_time.includes('T')) {
         punchDateTime = new Date(punch_time);
         punchDateStr = punch_date ? String(punch_date).slice(0, 10) : punchDateTime.toISOString().split('T')[0];
       } else {
-        const timePart = punch_time.length === 5 ? `${punch_time}:00` : punch_time;
-        punchDateTime = new Date(`${punchDateStr}T${timePart}`);
+        punchDateTime = parseISTDateTime(punchDateStr, punch_time);
       }
     } else {
-      punchDateTime = new Date(`${punchDateStr}T${currentTimeStr}`);
+      punchDateTime = new Date();
     }
     const today = punchDateStr;
     const now = punchDateTime;
@@ -69,9 +81,8 @@ router.post('/punch', async (req: Request, res: Response) => {
       let lateMinutes = 0;
 
       if (sched) {
-        const [h, m] = sched.work_start.split(':').map(Number);
-        const schedStart = new Date(now);
-        schedStart.setHours(h, m + sched.late_threshold_minutes, 0, 0);
+        const schedStart = parseISTDateTime(today, sched.work_start);
+        schedStart.setMinutes(schedStart.getMinutes() + (sched.late_threshold_minutes || 15));
         if (now > schedStart) {
           isLate = 1;
           lateMinutes = Math.floor((now.getTime() - schedStart.getTime()) / 60000);
@@ -124,9 +135,7 @@ router.post('/punch', async (req: Request, res: Response) => {
       const [schedRows] = await pool.query<any[]>('SELECT * FROM work_schedules WHERE is_default = 1 LIMIT 1');
       const sched = schedRows[0];
       if (sched) {
-        const [h, m] = sched.work_end.split(':').map(Number);
-        const schedEnd = new Date(now);
-        schedEnd.setHours(h, m, 0, 0);
+        const schedEnd = parseISTDateTime(today, sched.work_end);
         if (now > schedEnd) overtimeHours = parseFloat(((now.getTime() - schedEnd.getTime()) / 3600000).toFixed(2));
       }
 
@@ -162,8 +171,8 @@ router.post('/punch', async (req: Request, res: Response) => {
       const inTimeStr = in_time || punch_time || '09:00';
       const outTimeStr = out_time || punch_out_time || '18:00';
 
-      const inDateTime = new Date(`${punchDateStr}T${inTimeStr.length === 5 ? inTimeStr + ':00' : inTimeStr}`);
-      let outDateTime = new Date(`${punchDateStr}T${outTimeStr.length === 5 ? outTimeStr + ':00' : outTimeStr}`);
+      const inDateTime = parseISTDateTime(punchDateStr, inTimeStr);
+      let outDateTime = parseISTDateTime(punchDateStr, outTimeStr);
       if (outDateTime <= inDateTime) {
         // Cross-midnight shift handling (e.g. 21:00 to 06:00)
         outDateTime = new Date(outDateTime.getTime() + 24 * 60 * 60 * 1000);
@@ -176,17 +185,14 @@ router.post('/punch', async (req: Request, res: Response) => {
       let overtimeHours = 0;
 
       if (sched) {
-        const [hStart, mStart] = sched.work_start.split(':').map(Number);
-        const schedStart = new Date(inDateTime);
-        schedStart.setHours(hStart, mStart + sched.late_threshold_minutes, 0, 0);
+        const schedStart = parseISTDateTime(punchDateStr, sched.work_start);
+        schedStart.setMinutes(schedStart.getMinutes() + (sched.late_threshold_minutes || 15));
         if (inDateTime > schedStart) {
           isLate = 1;
           lateMinutes = Math.floor((inDateTime.getTime() - schedStart.getTime()) / 60000);
         }
 
-        const [hEnd, mEnd] = sched.work_end.split(':').map(Number);
-        const schedEnd = new Date(outDateTime);
-        schedEnd.setHours(hEnd, mEnd, 0, 0);
+        const schedEnd = parseISTDateTime(punchDateStr, sched.work_end);
         if (outDateTime > schedEnd) {
           overtimeHours = parseFloat(((outDateTime.getTime() - schedEnd.getTime()) / 3600000).toFixed(2));
         }
@@ -258,7 +264,7 @@ router.post('/punch', async (req: Request, res: Response) => {
 router.get('/today', async (req: Request, res: Response) => {
   try {
     const queryDate = (req.query.date as string) || '';
-    const today = queryDate || new Date().toISOString().split('T')[0];
+    const today = queryDate || getTodayDateIST();
     const pageParam = req.query.page as string | undefined;
     const limitParam = req.query.limit as string | undefined;
     const tabParam = ((req.query.tab as string) || 'all').toLowerCase();
@@ -656,7 +662,7 @@ router.post('/leave/disapprove', authorizeRoles('admin', 'hr', 'manager'), async
   if (!emp_id && !emp_code) {
     return res.status(400).json({ success: false, message: 'emp_id or emp_code required' });
   }
-  const targetDate = date || new Date().toISOString().split('T')[0];
+  const targetDate = date || getTodayDateIST();
   const disapproveReason = reason || 'Disapproved by Section Head';
 
   try {
@@ -715,7 +721,7 @@ router.post('/leave/disapprove', authorizeRoles('admin', 'hr', 'manager'), async
 router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async (req: Request, res: Response) => {
   try {
     const { empId } = req.params;
-    const targetDate = (req.query.date as string) || new Date().toISOString().split('T')[0];
+    const targetDate = (req.query.date as string) || getTodayDateIST();
 
     // 1. Employee Info: Match by emp_code FIRST, then by id
     const [empRows] = await pool.query<any[]>(
@@ -978,7 +984,7 @@ router.get('/leave-slip/:empId', authorizeRoles('admin', 'hr', 'manager'), async
 // POST /api/attendance/auto-absent & /mark-absent - Automatically mark unpunched active staff as absent
 router.post(['/auto-absent', '/mark-absent'], authorizeRoles('admin', 'hr', 'manager'), async (req: Request, res: Response) => {
   const { date } = req.body;
-  const targetDate = date || new Date().toISOString().split('T')[0];
+  const targetDate = date || getTodayDateIST();
 
   try {
     // 1. First sync any employees who have approved leave in leave_records covering targetDate into attendance_records if not present

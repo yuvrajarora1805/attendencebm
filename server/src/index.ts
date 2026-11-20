@@ -1,3 +1,6 @@
+// Enforce India Standard Time (IST) across entire application runtime regardless of host server timezone
+process.env.TZ = process.env.APP_TIMEZONE || 'Asia/Kolkata';
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';

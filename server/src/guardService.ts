@@ -1,3 +1,6 @@
+// Enforce India Standard Time (IST) across guard terminal microservice runtime
+process.env.TZ = process.env.APP_TIMEZONE || 'Asia/Kolkata';
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -6,6 +9,15 @@ import path from 'path';
 import pool from './db/connection';
 
 dotenv.config();
+
+const getTodayDateIST = (): string => {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+};
+
+const parseISTDateTime = (dateStr: string, timeStr: string): Date => {
+  const cleanTime = timeStr.length === 5 ? `${timeStr}:00` : timeStr;
+  return new Date(`${dateStr}T${cleanTime}+05:30`);
+};
 
 const app = express();
 const GUARD_PORT = parseInt(process.env.GUARD_PORT || '5051');
@@ -28,7 +40,7 @@ app.get('/health', (req, res) => {
 // GET /api/today - Live punches for guard screen
 app.get('/api/today', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDateIST();
     const [rows] = await pool.query<any[]>(
       `SELECT ar.*, e.name, e.emp_code, d.name as department_name 
        FROM attendance_records ar
@@ -64,7 +76,7 @@ app.post('/api/punch', async (req, res) => {
     }
 
     const emp = empRows[0];
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDateIST();
     const now = new Date();
 
     const [existingRows] = await pool.query<any[]>(
@@ -100,9 +112,8 @@ app.post('/api/punch', async (req, res) => {
       let lateMinutes = 0;
 
       if (sched) {
-        const [h, m] = sched.work_start.split(':').map(Number);
-        const schedStart = new Date(now);
-        schedStart.setHours(h, m + (sched.late_threshold_minutes || 15), 0, 0);
+        const schedStart = parseISTDateTime(today, sched.work_start);
+        schedStart.setMinutes(schedStart.getMinutes() + (sched.late_threshold_minutes || 15));
         if (now > schedStart) {
           isLate = 1;
           lateMinutes = Math.floor((now.getTime() - schedStart.getTime()) / 60000);
@@ -142,9 +153,7 @@ app.post('/api/punch', async (req, res) => {
       const [schedRows] = await pool.query<any[]>('SELECT * FROM work_schedules WHERE is_default = 1 LIMIT 1');
       const sched = schedRows[0];
       if (sched) {
-        const [h, m] = sched.work_end.split(':').map(Number);
-        const schedEnd = new Date(now);
-        schedEnd.setHours(h, m, 0, 0);
+        const schedEnd = parseISTDateTime(today, sched.work_end);
         if (now > schedEnd) {
           overtimeHours = parseFloat(((now.getTime() - schedEnd.getTime()) / 3600000).toFixed(2));
         }

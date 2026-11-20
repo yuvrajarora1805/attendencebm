@@ -21,7 +21,7 @@ export const ManualPunchModal: React.FC<ManualPunchModalProps> = ({
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [selectedEmpId, setSelectedEmpId] = useState<string>('');
   const [punchDate, setPunchDate] = useState<string>(
-    defaultDate || new Date().toISOString().split('T')[0]
+    defaultDate || new Date().toLocaleDateString('en-CA')
   );
   const [punchAction, setPunchAction] = useState<'both' | 'auto' | 'in' | 'out'>('both');
   const [inTime, setInTime] = useState<string>('09:00');
@@ -62,7 +62,7 @@ export const ManualPunchModal: React.FC<ManualPunchModalProps> = ({
   if (!isOpen) return null;
 
   const selectedEmp = employees.find(e => String(e.id) === String(selectedEmpId));
-  const isToday = punchDate === new Date().toISOString().split('T')[0];
+  const isToday = punchDate === new Date().toLocaleDateString('en-CA');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -352,3 +352,4 @@ export const ManualPunchModal: React.FC<ManualPunchModalProps> = ({
 };
 
 export default ManualPunchModal;
+

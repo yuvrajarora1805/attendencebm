@@ -14,7 +14,7 @@ import LeaveSlipPDF from '../components/LeaveSlipPDF';
 export const ManagerAttendancePage: React.FC = () => {
   const { user } = useAuth();
   const [clock, setClock] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toLocaleDateString('en-CA'));
   const [records, setRecords] = useState<any[]>([]);
   const [unpunchedEmployees, setUnpunchedEmployees] = useState<any[]>([]);
   const [meta, setMeta] = useState<any>({
@@ -93,7 +93,7 @@ export const ManagerAttendancePage: React.FC = () => {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   });
   const [punchReason, setPunchReason] = useState('');
-  const [punchDate, setPunchDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [punchDate, setPunchDate] = useState<string>(() => new Date().toLocaleDateString('en-CA'));
   const [submitting, setSubmitting] = useState(false);
   const [punchResult, setPunchResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
